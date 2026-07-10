@@ -82,12 +82,15 @@ Concerné : `Canvas2dSize` (placement/scale), `Size3d(PositiveMeters)` (géomét
 ## Résolutions
 
 Deux classes différentes selon le contexte :
-- `InheritableImageResolution` (Compo.rasterizer, ContentArea.resolution) : a un `.preset` (enum
-  `ImageResolutionPreset`) qui démarre à **41 = "Inherited"** — dans cet état, `.width`/`.height`
-  sont **totalement ignorés**, la résolution vient du parent. Il faut `.preset = 40` ("Custom...")
-  AVANT de fixer width/height. Si les valeurs custom correspondent pile à un preset nommé (ex.
-  1280x720 = "HD 720"), `.preset` se réaffiche automatiquement avec ce nom — cosmétique
-  uniquement, les valeurs restent bonnes.
+- `InheritableImageResolution` (Compo.rasterizer, ContentArea.resolution, ContentMap.rasterizer/
+  rootArea.resolution) : a un `.preset` (enum `ImageResolutionPreset`, classe wrapper avec
+  `.get()`/`.set()`, PAS assignable par `=` direct — `obj.preset = 40` lève
+  `TypeError: invalid 'preset' variable type: expected ImageResolutionPreset, not <class 'int'>`)
+  qui démarre à **41 = "Inherited"** — dans cet état, `.width`/`.height` sont **totalement
+  ignorés** (l'UI affiche "Inherited" même si width/height ont été explicitement réglés), la
+  résolution vient du parent. Il faut `.preset.set(40)` ("Custom...") AVANT de fixer width/height.
+  Si les valeurs custom correspondent pile à un preset nommé (ex. 1280x720 = "HD 720"), `.preset`
+  se réaffiche automatiquement avec ce nom — cosmétique uniquement, les valeurs restent bonnes.
 - `ImageResolution` (device NDI, etc.) : pas de notion "Inherited", `.width`/`.height` directs
   (avec `.linked` quand même).
 
@@ -177,9 +180,11 @@ outputVideo.source.set(cm.rootArea)   # pas outputVideo.source.set(cm)
 **ContentMap / zones** (`pipeline.contentMaps`) :
 ```python
 cm = Oil.createObject("ContentMap")
+cm.rasterizer.resolution.preset.set(40)   # 40=Custom, sinon reste sur Inherited (41) et ignore width/height
 cm.rasterizer.resolution.linked = False
 cm.rasterizer.resolution.width = 3000
 cm.rasterizer.resolution.height = 200
+cm.rootArea.resolution.preset.set(40)
 cm.rootArea.resolution.linked = False
 cm.rootArea.resolution.width = 3000
 cm.rootArea.resolution.height = 200
