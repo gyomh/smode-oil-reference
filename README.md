@@ -196,12 +196,26 @@ zone.resolution.height = 200
 zone.placement.scale.size.linked = False
 zone.placement.scale.size.width = 1000.0
 zone.placement.scale.size.height = 200.0
-zone.placement.position.x = 0.0   # unité de Canvas2dPosition non confirmée (pixels vs normalisé)
+zone.placement.position.x = 0.0
 zone.placement.position.y = 0.0
 cm.rootArea.areas.append(zone)    # configurer AVANT, append en dernier — jamais retoucher après
 
 script.project.pipeline.contentMaps.append(cm)
 ```
+
+**Unités de `Canvas2dPosition`/`Canvas2dSize`** : fractions normalisées 0.0–1.0 (PAS des pixels),
+confirmé en lisant les défauts d'une `ContentArea` fraîche (`position=(0.5, 0.5)`,
+`anchor=(0.5, 0.5)`, `scale.size=(1.0, 1.0)` = 100%). `position` représente où se place le point
+d'ancrage (`anchor`) DANS le repère 0–1 du parent — avec l'ancrage par défaut au centre (0.5,0.5),
+`position=(0.5, 0.5)` = zone centrée occupant tout le parent. Pour poser côte à côte N zones de
+largeur égale (résolution en pixels réglée séparément, scale laissé à 100% par défaut), calculer
+le centre de chaque zone en fraction du parent : `position.x = (i + 0.5) / N`. Erreur classique :
+passer des valeurs "façon pixels" (ex. `960.0` au lieu de `0.75`) → accepté sans erreur mais
+interprété comme une fraction énorme (`960.0` devient `96000%` dans l'UI), zone hors cadre.
+Piège annexe : modifier `.placement.scale`/`.position` sur une `ContentArea` déjà **appended**
+(re-fetch après coup) retombe dans le pattern crash-prone documenté plus haut — en cas d'erreur
+de valeur après append, préférer `areas.clear()` + recréer les zones proprement plutôt que
+corriger les objets existants en place.
 
 ## Système de Parameters / Links / Cues
 
