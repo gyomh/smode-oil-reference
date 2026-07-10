@@ -185,6 +185,21 @@ compoLayer.renderer.target.set(cm)    # cm = la ContentMap (deja appended dans p
 Un layer avec un `target` non résolu s'affiche en rouge avec `<Missing Target>` dans l'UI —
 symptôme fiable pour repérer un layer censé alimenter une ContentMap mais mal câblé.
 
+**LIMITE MAJEURE CONFIRMÉE (2026-07-10)** : `renderer.target.set(cm)` via le pont MET À JOUR la
+valeur (relecture immédiate via `.get()` confirme le bon pointeur, pas d'erreur), **mais ne
+déclenche PAS le rendu réel**. Testé sur 3 ContentMaps différentes (2 créées par script, 1 créée
+entièrement à la main dans l'UI par Guillaume) : dans les 3 cas, `set()` via script laisse
+l'aperçu de la ContentMap noir/vide, alors que **re-sélectionner manuellement la MÊME valeur dans
+le dropdown UI fait apparaître le rendu immédiatement**. Contrairement au bug des Links
+"Disconnected" (fixable en fermant/rouvrant le projet), **fermer/rouvrir le projet ne corrige PAS
+celui-ci** — confirmé en conditions réelles. Conclusion : `.set()` sur un `SceneTargetWeakPointer`
+change la donnée mais ne déclenche pas la notification interne qui active le pipeline de rendu ;
+seule une interaction UI directe (re-sélection dans le dropdown) semble le faire. Workaround
+actuel : le script peut préparer/câbler la valeur (utile pour du câblage en masse), mais un passage
+manuel dans l'UI reste nécessaire pour activer réellement chaque target. Aucune méthode
+alternative trouvée à ce jour (pas de `.trig()`/`.refresh()` déclencheur identifié sur
+`ContentMap`, `TextureLayer`, ou `SingleTextureRenderer`).
+
 **Relier une ContentMap à un VideoOutput** : `VideoOutput.source` est un `PipelineSourceWeakPointer`
 qui refuse une `ContentMap` directement (erreur Smode, popup UI :
 `"Wrong target type for pipeline source pointer: it should point to either a Content Area or a
