@@ -165,6 +165,15 @@ engine                              # niveau système, PAS projet (partagé entr
     └── configurations              # NamedObjectMap, presets de config (pas exploré en détail)
 ```
 
+**Relier une ContentMap à un VideoOutput** : `VideoOutput.source` est un `PipelineSourceWeakPointer`
+qui refuse une `ContentMap` directement (erreur Smode, popup UI :
+`"Wrong target type for pipeline source pointer: it should point to either a Content Area or a
+Video Rasterizer"` — pas remontée comme exception côté pont, seulement visible dans l'UI). Il
+faut pointer vers sa `ContentArea` (`cm.rootArea`, pas `cm`) :
+```python
+outputVideo.source.set(cm.rootArea)   # pas outputVideo.source.set(cm)
+```
+
 **ContentMap / zones** (`pipeline.contentMaps`) :
 ```python
 cm = Oil.createObject("ContentMap")
