@@ -168,6 +168,23 @@ engine                              # niveau système, PAS projet (partagé entr
     └── configurations              # NamedObjectMap, presets de config (pas exploré en détail)
 ```
 
+**Afficher une Compo dans une ContentMap** : PAS via `ContentMap.currentCamera` (fausse piste — ce
+`WeakPointer(CameraV9)` existe bien mais n'est pas le mécanisme d'affichage standard ; laisser
+`.reset()`/vide). Le vrai mécanisme, visible dans le panneau UI des layers comme une colonne
+"target" (qui remplace le blend mode "Normal" pour les layers top-level) : le **renderer** du
+TextureLayer qui enveloppe la Compo a une propriété `target` (`SceneTargetWeakPointer`) à pointer
+vers la `ContentMap` (directement, pas besoin de `.rootArea` ici — contrairement à
+`VideoOutput.source`) :
+```python
+compoLayer = Oil.createObject("TextureLayer")
+compoLayer.generator = compo          # la Compo a afficher
+parentScene.layers.append(compoLayer) # renderer par defaut = SingleTextureRenderer
+
+compoLayer.renderer.target.set(cm)    # cm = la ContentMap (deja appended dans pipeline.contentMaps)
+```
+Un layer avec un `target` non résolu s'affiche en rouge avec `<Missing Target>` dans l'UI —
+symptôme fiable pour repérer un layer censé alimenter une ContentMap mais mal câblé.
+
 **Relier une ContentMap à un VideoOutput** : `VideoOutput.source` est un `PipelineSourceWeakPointer`
 qui refuse une `ContentMap` directement (erreur Smode, popup UI :
 `"Wrong target type for pipeline source pointer: it should point to either a Content Area or a
