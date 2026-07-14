@@ -308,10 +308,19 @@ plutôt que corriger les objets existants en place.
   cas de la famille "objet construit par script qui ne déclenche pas la notification live" (voir
   Bugs UI connus), plus insidieux ici car même le contenu (classes + valeurs résolues + modifier)
   est identique — la différence doit être une étape d'enregistrement/abonnement interne
-  déclenchée uniquement par l'action UI, invisible depuis Oil. **Pas de contournement trouvé** ;
-  passer par "Expose As..." + glisser-déposer en UI reste la seule méthode fiable pour ce genre
-  de liaison. Un `PythonScriptTool` "At Every Update" qui recopie la valeur à la main fonctionne
-  (voir plus bas) mais est plus lourd et à réserver aux cas où l'UI ne suffit pas.
+  déclenchée uniquement par l'action UI, invisible depuis Oil.
+  Piste testée et **écartée** : toggler `link.activation` (`.set(1)` puis `.set(0)`) juste après
+  la création, en espérant forcer une réévaluation. Résultat réel : ça force au mieux UNE
+  évaluation ponctuelle (constaté une fois avec `engine.status.frame.time` comme source — le
+  texte a pris une valeur figée au moment du toggle, jamais remise à jour ensuite), et dans un
+  test complet ultérieur (source = `transport.position` d'une Timeline en lecture), même cette
+  évaluation unique n'a pas eu lieu (texte resté sur sa valeur par défaut malgré le toggle). Donc
+  aucun gain fiable — inutile de l'ajouter dans un script. **Pas de contournement trouvé** ;
+  passer par "Expose As..." + glisser-déposer en UI reste la seule méthode fiable pour activer un
+  Link, natif ou créé par script (créer la structure par API puis rouvrir/retoucher une fois le
+  Link à la main dans l'UI fonctionne aussi comme workaround). Un `PythonScriptTool` "At Every
+  Update" qui recopie la valeur à la main fonctionne (voir plus bas) et n'a pas ce problème, mais
+  est plus lourd et moins lisible pour quelqu'un qui ne lit pas le code.
 
 ## Timeline (TimelineCue)
 
