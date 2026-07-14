@@ -15,6 +15,7 @@
 - [Enums : jamais deviner l'index](#enums--jamais-deviner-lindex)
 - [Cartographie de l'arbre projet](#cartographie-de-larbre-projet)
 - [Système de Parameters / Links / Cues](#système-de-parameters--links--cues)
+- [Timeline (TimelineCue)](#timeline-timelinecue)
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Bugs UI connus](#bugs-ui-connus)
@@ -37,6 +38,9 @@ Méthodes fiables, à utiliser dans cet ordre :
    **Fonctionne bien sur un objet isolé** (juste créé, ou lu proprement depuis l'arbre). Éviter
    de l'appeler sur un objet qu'on vient de manipuler dans un append/removeAt risqué (voir
    section instabilités) — pas confirmé comme LA cause d'un crash, mais corrélé une fois.
+5. `Map` Oil (ex. `TimelineCue.elementTracks`) : pas d'accès par index entier (`map[0]` lève
+   `TypeError`, il attend un objet-clé) — itérer avec `.items()` (retourne des paires clé/valeur
+   Python classiques).
 
 ## Règle d'or : configurer avant d'ajouter, jamais après
 
@@ -78,6 +82,11 @@ obj.size.height = 200.0
 Concerné : `Canvas2dSize` (placement/scale), `Size3d(PositiveMeters)` (géométrie 3D — ici pas de
 `.linked`, x/y/z indépendants), `InheritableImageResolution`, `ImageResolution`,
 `CheckerBoardTextureGenerator.size/.balance`.
+
+Générateur de couleur unie (layer "Uniform" dans l'UI) : `UniformTextureGenerator` — `.color`
+est un `HsvColor` (`.red`/`.green`/`.blue`/`.hue`/`.saturation`/`.value`/`.alpha`, chacun un
+`Percentage` avec `.get()`/`.set()`). À assigner à `TextureLayer.generator` (pas `"Uniform"` tout
+court, ce nom n'existe pas comme classe Oil).
 
 ## Résolutions
 
@@ -152,7 +161,13 @@ script.project
 │   └── virtualScreens[]
 └── topology
 
+Compo                                # pas de .masterScene : les layers sont directs
+├── layers[]                         # OwnedVector(Layer), comme masterScene.layers
+├── rasterizer.resolution            # InheritableImageResolution (piège Custom/Inherited)
+└── mainAnimation                    # MainAnimationOwnedPointer, ex. TimelineCue
+
 engine                              # niveau système, PAS projet (partagé entre projets ouverts)
+├── configuration.timing.requestedFrameRate  # VideoTimeBase (.p/.q) — frame rate global
 ├── devices.devices[]               # OwnedVector(Device) — matériel détecté (storage, capture,
 │                                    # audio...) + `deviceConfigurationDirty` (Trigger) pour forcer
 │                                    # un rescan. ATTENTION : un objet ajouté manuellement ici
@@ -276,6 +291,25 @@ plutôt que corriger les objets existants en place.
   (2 `Keyframe` mini, interpolateurs par défaut = `StepKeyframeInterpolator` → forcer
   `LinearKeyframeInterpolator` explicitement sur `.inputInterpolator`/`.outputInterpolator`).
 
+## Timeline (TimelineCue)
+
+- `Compo.mainAnimation` (`MainAnimationOwnedPointer`) accepte un `Oil.createObject("TimelineCue")`
+  — assignation directe (`compo.mainAnimation = tc`), pas `.set()` (règle OwnedPointer habituelle).
+- `TimelineCue.createBlock(element)` → `(ElementTrack, ElementTrackBlock)` : crée le track ET le
+  bloc pour un layer donné en une seule fois, positionné au curseur. Repositionner ensuite à la
+  main : `block.autoLength.set(False)` puis `block.position.set(secondes)` / `block.length.set(
+  secondes)` (les deux en `Seconds`, pas en frames — convertir via le frame rate, voir plus bas).
+- Structure sous-jacente (visible en clair dans un `.compo`/`.project` sauvegardé) :
+  `TimelineCue.elementTracks` = `Map({key = WeakPointer(Element), value = ElementTrack})`,
+  `ElementTrack.blocks` = `OwnedVector(ElementTrackBlock)`.
+- **Bug d'affichage lié à l'ordre de construction** → voir "Bugs UI connus" : construire toute la
+  timeline (`createBlock` + réglages) AVANT que la `Compo` soit insérée dans l'arbre du document
+  fait planter la synchro du panneau Timeline (layers invisibles, lecture correcte quand même).
+  Toujours insérer la `Compo` dans la scène d'abord, construire le `TimelineCue` ensuite.
+- Frame rate global du projet, pour convertir images → secondes : `engine.configuration.timing.
+  requestedFrameRate` (`VideoTimeBase` avec `.p`/`.q`, ex. 60/1 = 60fps). Pas de propriété
+  framerate sur `Compo`/`Pipeline` — c'est un réglage moteur, partagé entre projets ouverts.
+
 ## Audio réactif
 
 `AudioSpectrumLinkSource` — classe native pour injecter en continu l'intensité d'une bande de
@@ -328,6 +362,14 @@ pas seulement le script lui-même.
 - **`CustomEnumeration` reste vide dans le panneau** tant que le script n'a pas été RUN
   (Ctrl+Entrée) au moins une fois après le premier Compile — le peuplement se fait dans le corps
   du script (statements), pas à la déclaration.
+- **`TimelineCue` (mainAnimation) construite hors-arbre puis insérée d'un coup : layers absents
+  du panneau Timeline**, alors que la lecture fonctionne réellement (donnée correcte, juste l'UI
+  qui ne se synchronise pas). Même famille que le bug `ContentMap.target` (ligne ~188) : Smode ne
+  notifie pas toujours l'UI pour un objet construit pendant que son conteneur est encore hors de
+  l'arbre du document ouvert. Fix confirmé : insérer la `Compo` dans la scène (`parentElement.
+  layers.append(compoLayer)`) **avant** de créer le `TimelineCue`/appeler `.createBlock()`, pas
+  après — reproduit le comportement d'un pilotage pas-à-pas en session live, où la Compo est déjà
+  dans l'arbre au moment où la timeline se construit.
 
 ## Instabilités observées
 
