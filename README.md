@@ -290,6 +290,15 @@ plutôt que corriger les objets existants en place.
   propre `FunctionLinkModifier({input=Percentage, output=Percentage})` avec une `KeyframeFunction`
   (2 `Keyframe` mini, interpolateurs par défaut = `StepKeyframeInterpolator` → forcer
   `LinearKeyframeInterpolator` explicitement sur `.inputInterpolator`/`.outputInterpolator`).
+- **"Expose As..." (clic-droit UI sur un champ, ex. `TimelineCue.transport.position`)** : crée
+  directement un `Parameter(Type)` qui reflète en continu la valeur source, dans une
+  `ParameterBank` existante ou nouvelle — SANS script, sans `Link`/`LinkSource` visible via
+  l'API Python (le paramètre créé est un `Parameter(Seconds)` ordinaire en introspection, la
+  liaison native est opaque côté Oil). Confirmé fonctionnel sur `transport.position` (mirroring
+  fiable, testé en lecture continue). **Action UI uniquement** — pas trouvé d'équivalent
+  scriptable (`Oil.createObject`/méthode) pour la déclencher par le pont MCP ; plus simple et
+  plus fiable qu'un `PythonScriptTool` "At Every Update" qui recopie la valeur à la main pour ce
+  besoin précis (mirorer un champ vers un Parameter affichable/liable ailleurs).
 
 ## Timeline (TimelineCue)
 
