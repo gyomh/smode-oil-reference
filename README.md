@@ -9,6 +9,7 @@
 ## Sommaire
 - [Introspection sûre](#introspection-sûre)
 - [Règle d'or : configurer avant d'ajouter, jamais après](#règle-dor--configurer-avant-dajouter-jamais-après)
+- [Une Compo sans target n'est jamais évaluée par le moteur](#une-compo-sans-target-nest-jamais-évaluée-par-le-moteur)
 - [Le piège `.linked`](#le-piège-linked)
 - [Résolutions](#résolutions)
 - [Pointeurs polymorphes (OwnedPointer)](#pointeurs-polymorphes-ownedpointer)
@@ -66,6 +67,28 @@ Deux façons de casser ça, observées concrètement :
   objets de scène (Compo/GeometryLayer/AffineCamera — ceux-là gardent bien leur config après
   append). Donc cette règle est solide pour l'arbre de scène, à re-vérifier au cas par cas côté
   `engine.*`.
+
+## Une Compo sans target n'est jamais évaluée par le moteur
+
+Règle générale, indépendante du cas Timeline/Link où elle a été découverte (détails et exemple
+complet dans la section [Timeline (TimelineCue)](#timeline-timelinecue)) : une `Compo` embarquée
+via un `TextureLayer` (`compoLayer.generator = compo`) dont le `TextureLayer.renderer.target`
+n'a **jamais été assigné à une destination de rendu** (typiquement une `ContentMap`, dans
+`script.project.pipeline.contentMaps`) n'est **pas évaluée par le moteur** — ni son rendu visuel,
+ni ses `Link`s, ni ses `Script`s "At Every Update" internes, **même si tout le reste est
+structurellement correct**. Ce qui ressemblait à répétition à des bugs "objet construit par
+script qui ne s'active pas" (Links inertes notamment) venait en réalité de là. Réflexe pour tout
+script qui construit une Compo destinée à un comportement live (pas seulement statique) :
+
+```python
+contentMaps = script.project.pipeline.contentMaps
+if len(contentMaps) > 0:
+    compoLayer.renderer.target.set(contentMaps[0])
+```
+
+Assigner le target dès la construction (avant d'ajouter du contenu qui doit être live dedans,
+même logique que la règle Timeline-avant/après-insertion) suffit ; aucune action manuelle
+supplémentaire n'est nécessaire ensuite.
 
 ## Le piège `.linked`
 
@@ -298,29 +321,30 @@ plutôt que corriger les objets existants en place.
   un `ToStringLinkModifier` qui fait la conversion `Seconds` → texte formaté timecode
   `H:MM:SS:FF`) et `.targets` = un `ParameterLinkTarget` (`.target` = WeakPointer vers le champ
   DESTINATION, ex. `textGenerator.text` ; `.modifiers` vide).
-  **Reconstruire cette structure via script NE FONCTIONNE PAS**, même en reproduisant fidèlement
-  la structure complète (`Oil.createObject("Link")` + `ParameterLinkSource`/`ParameterLinkTarget`
-  + `ToStringLinkModifier` sur `.modifiers` de la source + `.target.set(prop)` sur les deux bouts
-  + `linkBank.links.append()`) : le `Link` se crée sans erreur, structure identique en
-  introspection (classes, cibles résolues, modifier présent) à un Link natif, mais ne s'active
-  jamais — testé en comparant côte à côte pendant une lecture active : le Link natif passait de
-  `0:00:02:48` à `0:00:05:00`, le Link scripté restait figé sur sa valeur placeholder. Encore un
-  cas de la famille "objet construit par script qui ne déclenche pas la notification live" (voir
-  Bugs UI connus), plus insidieux ici car même le contenu (classes + valeurs résolues + modifier)
-  est identique — la différence doit être une étape d'enregistrement/abonnement interne
-  déclenchée uniquement par l'action UI, invisible depuis Oil.
-  Piste testée et **écartée** : toggler `link.activation` (`.set(1)` puis `.set(0)`) juste après
-  la création, en espérant forcer une réévaluation. Résultat réel : ça force au mieux UNE
-  évaluation ponctuelle (constaté une fois avec `engine.status.frame.time` comme source — le
-  texte a pris une valeur figée au moment du toggle, jamais remise à jour ensuite), et dans un
-  test complet ultérieur (source = `transport.position` d'une Timeline en lecture), même cette
-  évaluation unique n'a pas eu lieu (texte resté sur sa valeur par défaut malgré le toggle). Donc
-  aucun gain fiable — inutile de l'ajouter dans un script. **Pas de contournement trouvé** ;
-  passer par "Expose As..." + glisser-déposer en UI reste la seule méthode fiable pour activer un
-  Link, natif ou créé par script (créer la structure par API puis rouvrir/retoucher une fois le
-  Link à la main dans l'UI fonctionne aussi comme workaround). Un `PythonScriptTool` "At Every
-  Update" qui recopie la valeur à la main fonctionne (voir plus bas) et n'a pas ce problème, mais
-  est plus lourd et moins lisible pour quelqu'un qui ne lit pas le code.
+  **Reconstruire cette structure via script semblait ne pas fonctionner** au premier essai, même
+  en reproduisant fidèlement la structure complète (`Oil.createObject("Link")` +
+  `ParameterLinkSource`/`ParameterLinkTarget` + `ToStringLinkModifier` sur `.modifiers` de la
+  source + `.target.set(prop)` sur les deux bouts + `linkBank.links.append()`) : le `Link` se
+  crée sans erreur, structure identique en introspection (classes, cibles résolues, modifier
+  présent) à un Link natif, mais restait figé sur sa valeur placeholder.
+  **Cause racine trouvée : ce n'est pas le Link, c'est l'absence de `target` sur la Compo.** Une
+  `Compo` embarquée via un `TextureLayer` (`compoLayer.generator = compo`) sans que
+  `compoLayer.renderer.target` pointe vers une `ContentMap` (ou autre destination de rendu)
+  n'est **jamais évaluée par le moteur** — ni son rendu, ni ses `Link`s, ni rien d'autre à
+  l'intérieur, qu'ils soient natifs ou créés par script. Dès qu'un target est assigné
+  (`compoLayer.renderer.target.set(contentMap)`, avec `contentMap` pris dans
+  `script.project.pipeline.contentMaps`), un `Link` scripté identique à celui décrit ci-dessus se
+  met à jour en continu **sans aucune action manuelle**, dès sa création — confirmé en lecture
+  active (`text` suivant `transport.position` image par image). Toggler `link.activation` (essayé
+  avant de trouver la vraie cause) ne donnait au mieux qu'une évaluation ponctuelle figée — piste
+  abandonnée, inutile une fois le vrai problème (target manquant) identifié.
+  **Règle générale, pas spécifique aux Links** : toute Compo construite par script et destinée à
+  un comportement "live" (Links, Scripts internes, animations) doit recevoir un target dès sa
+  construction, sinon rien ne s'anime dedans, même si tout est structurellement correct. Note :
+  ceci n'annule pas la limite documentée plus haut sur `renderer.target.set()` qui ne réactive
+  pas forcément l'AFFICHAGE d'une ContentMap déjà utilisée ailleurs (bug distinct) — ici on parle
+  de l'évaluation/exécution du contenu de la Compo elle-même, qui elle fonctionne dès l'assignation
+  du target, sans étape manuelle supplémentaire.
 
 ## Timeline (TimelineCue)
 
