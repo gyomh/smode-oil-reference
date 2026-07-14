@@ -290,15 +290,28 @@ plutôt que corriger les objets existants en place.
   propre `FunctionLinkModifier({input=Percentage, output=Percentage})` avec une `KeyframeFunction`
   (2 `Keyframe` mini, interpolateurs par défaut = `StepKeyframeInterpolator` → forcer
   `LinearKeyframeInterpolator` explicitement sur `.inputInterpolator`/`.outputInterpolator`).
-- **"Expose As..." (clic-droit UI sur un champ, ex. `TimelineCue.transport.position`)** : crée
-  directement un `Parameter(Type)` qui reflète en continu la valeur source, dans une
-  `ParameterBank` existante ou nouvelle — SANS script, sans `Link`/`LinkSource` visible via
-  l'API Python (le paramètre créé est un `Parameter(Seconds)` ordinaire en introspection, la
-  liaison native est opaque côté Oil). Confirmé fonctionnel sur `transport.position` (mirroring
-  fiable, testé en lecture continue). **Action UI uniquement** — pas trouvé d'équivalent
-  scriptable (`Oil.createObject`/méthode) pour la déclencher par le pont MCP ; plus simple et
-  plus fiable qu'un `PythonScriptTool` "At Every Update" qui recopie la valeur à la main pour ce
-  besoin précis (mirorer un champ vers un Parameter affichable/liable ailleurs).
+- **Mirorer un champ live vers un autre (ex. `TimelineCue.transport.position` → `Text` d'un
+  `LocalTextGenerator`, pour un affichage timecode)** : la bonne méthode est **"Expose As..."**
+  (clic-droit UI sur le champ source) puis glisser le résultat sur le champ cible — Smode crée
+  un `Link` dans un `LinkBank` (dans `compo.tools`) avec `.source` = `ParameterLinkSource`
+  (`.target` = WeakPointer vers le champ SOURCE, ex. `transport.position` ; `.modifiers` contient
+  un `ToStringLinkModifier` qui fait la conversion `Seconds` → texte formaté timecode
+  `H:MM:SS:FF`) et `.targets` = un `ParameterLinkTarget` (`.target` = WeakPointer vers le champ
+  DESTINATION, ex. `textGenerator.text` ; `.modifiers` vide).
+  **Reconstruire cette structure via script NE FONCTIONNE PAS**, même en reproduisant fidèlement
+  la structure complète (`Oil.createObject("Link")` + `ParameterLinkSource`/`ParameterLinkTarget`
+  + `ToStringLinkModifier` sur `.modifiers` de la source + `.target.set(prop)` sur les deux bouts
+  + `linkBank.links.append()`) : le `Link` se crée sans erreur, structure identique en
+  introspection (classes, cibles résolues, modifier présent) à un Link natif, mais ne s'active
+  jamais — testé en comparant côte à côte pendant une lecture active : le Link natif passait de
+  `0:00:02:48` à `0:00:05:00`, le Link scripté restait figé sur sa valeur placeholder. Encore un
+  cas de la famille "objet construit par script qui ne déclenche pas la notification live" (voir
+  Bugs UI connus), plus insidieux ici car même le contenu (classes + valeurs résolues + modifier)
+  est identique — la différence doit être une étape d'enregistrement/abonnement interne
+  déclenchée uniquement par l'action UI, invisible depuis Oil. **Pas de contournement trouvé** ;
+  passer par "Expose As..." + glisser-déposer en UI reste la seule méthode fiable pour ce genre
+  de liaison. Un `PythonScriptTool` "At Every Update" qui recopie la valeur à la main fonctionne
+  (voir plus bas) mais est plus lourd et à réserver aux cas où l'UI ne suffit pas.
 
 ## Timeline (TimelineCue)
 
