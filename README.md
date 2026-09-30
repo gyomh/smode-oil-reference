@@ -3,7 +3,7 @@
 > Smode Tech ne publie pas de documentation de l'API Oil/SmodeSDK pour un pilotage externe.
 > Tout ce qui suit vient de reverse engineering (introspection live via `dir()` / `Oil.docMe()`)
 > et de retours d'usage réels, accumulés en construisant des features avec le
-> [pont MCP smode-mcp](https://github.com/gyomh/smode-mcp). Vérifié sur Smode Compose R13.
+> [pont MCP smode-mcp](https://github.com/gyomh/smode-mcp). Vérifié sur Smode Compose R13 et versions ultérieures.
 > Contributions bienvenues — voir CONTRIBUTING en bas de fichier.
 
 ## Sommaire
