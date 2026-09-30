@@ -33,7 +33,7 @@ autour d'extensions compilées dans `Smode.exe`, sans les vraies définitions de
 Méthodes fiables, à utiliser dans cet ordre :
 1. `obj.getOilClassName()` — nom de classe réel.
 2. `dir(obj)` — liste des attributs/méthodes, léger, sans risque connu.
-3. `Oil.createObject("NomDeClasse")` dans un `try/except` — teste si une classe existe sans
+3. `Oil.createObject("NomDeClasse")` dans un `try/except` — testez si une classe existe sans
    avoir à la deviner dans la doc.
 4. `Oil.docMe(obj)` — introspection complète documentée officiellement (types, hiérarchie).
    **Fonctionne bien sur un objet isolé** (juste créé, ou lu proprement depuis l'arbre). Éviter
@@ -297,6 +297,47 @@ Piège annexe : modifier `.placement.scale`/`.position`/`.resolution` sur une `C
 cas d'erreur de valeur après append, préférer `areas.clear()` + recréer les zones proprement
 plutôt que corriger les objets existants en place.
 
+## Scene imbriquée (nested Scene layer)
+
+`Scene` est une classe Oil à part entière (confirmé `getOilClassName() == "Scene"`), pas juste le
+nom informel de `masterScene`. Un layer de `masterScene.layers` (ou de `Scene.layers`, récursif)
+peut être directement de classe `Scene` (pas seulement `TextureLayer`/`GeometryLayer`) — elle a
+alors ses propres `layers[]`, `mainAnimation` (`OwnedPointer`, comme `Compo.mainAnimation`) et
+`tools` (`OwnedVector(Tool)`, comme `compo.tools`). C'est exactement ce qu'affiche l'UI comme
+"Scene" avec ses enfants "Main Timeline" / "Parameters" / "Animations" / "Links" / (calques).
+
+Une `Scene` fraîchement créée (`Oil.createObject("Scene")`) a tout vide : `mainAnimation=None`,
+`tools` et `layers` de taille 0 — rien n'est créé par défaut, tout est à construire à la main.
+
+Les 3 banks visibles dans l'UI sous une Scene/Compo sont 3 classes Oil différentes, pas juste des
+labels du même `ParameterBank` : `ParameterBank` ("Parameters"), `AnimationBank` ("Animations"),
+`LinkBank` ("Links") — toutes ajoutées via `.tools.append(...)`. Leur `.label` reste une chaîne
+vide même en usage normal (le nom affiché dans l'UI vient du type, pas de `.label`).
+
+Pattern complet vérifié (règle d'or : tout configurer avant le dernier append) :
+```python
+scene = Oil.createObject("Scene")
+scene.label = "Scene"
+
+tc = Oil.createObject("TimelineCue")
+scene.mainAnimation = tc                       # OwnedPointer, assignation directe comme Compo
+
+scene.tools.append(Oil.createObject("ParameterBank"))
+scene.tools.append(Oil.createObject("AnimationBank"))
+scene.tools.append(Oil.createObject("LinkBank"))
+
+compo = Oil.createObject("Compo")
+compoLayer = Oil.createObject("TextureLayer")
+compoLayer.generator = compo
+compoLayer.label = "Compo"
+scene.layers.append(compoLayer)
+
+script.project.masterScene.layers.append(scene)   # dernier append
+```
+`label` (sur `Scene`/`TextureLayer`, wrappé en `_cppSmodeOil.String`) accepte l'assignation directe
+`obj.label = "texte"` aussi bien que `.set()`/`.get()` — les deux fonctionnent, contrairement aux
+enums qui exigent `.set()`.
+
 ## Système de Parameters / Links / Cues
 
 - `ParameterBank` (dans `compo.tools`) + `Parameter(Type)` (ex. `Parameter(Angle)`,
@@ -400,6 +441,24 @@ puisque ça se passe depuis l'intérieur.
 un script "ne tourne plus" : vérifier `layer.activation.get()` en remontant toute la hiérarchie,
 pas seulement le script lui-même.
 
+### Déclencher un Script depuis un autre Script (slots) — confirmé R15 (30/09/2026)
+
+- Déclarer un slot où l'utilisateur glisse un Script : `slot1: Oil.createObject("WeakPointer(PythonScriptTool)")`.
+  `script.slot1.get()` renvoie le `PythonScriptTool` (ou `None`).
+- Exécuter ce Script : `tool.execute.trig()` (`execute` est un objet `Trigger`, pas une fonction :
+  `tool.execute()` lève `'Trigger' object is not callable`). Synchrone, incrémente `numExecutions`.
+- `Oil.createObject("Trigger")` est déclarable en paramètre de Script, mais aucune méthode de
+  lecture (seulement `.trig()`) : pas de moyen trouvé de détecter un clic depuis le Script.
+  Un `Oil.Boolean(False)` remis à `False` par le script fait office de bouton.
+- `tool.getUniqueIdentifier()` **plante** : `TypeError: Unable to convert function return value
+  ... juce::Uuid`. Ne pas l'utiliser. Une exception non rattrapée dans un Script "At Every
+  Update" l'arrête complètement (le pont MCP répond alors en 504).
+- Le namespace `globals()` d'un Script **survit au recollage du code** : une fonction retirée du
+  source reste appelable jusqu'au redémarrage de Smode. Un serveur HTTP créé avec
+  `if "x" not in globals()` garde aussi l'ancienne classe de handler. Solution du pont : case
+  `restartServer` (purge des fonctions absentes du source via `ast` + `script.script.sourceCode.get()`,
+  puis redémarrage du serveur dans un thread — `shutdown()` bloquerait le thread principal).
+
 ## Bugs UI connus
 
 - **Liens affichés "Disconnected"** après création via l'API alors qu'ils fonctionnent réellement
@@ -453,7 +512,7 @@ d'un appel à l'autre.
 ## Contributing
 
 Cette référence est construite par l'usage réel, pas par lecture de doc officielle (qui
-n'existe pas pour ce niveau de détail). Si tu découvres un comportement différent, un piège
-supplémentaire, ou une meilleure méthode : ouvre une issue ou une PR avec la version de Smode
+n'existe pas pour ce niveau de détail). Si vous découvrez un comportement différent, un piège
+supplémentaire, ou une meilleure méthode : ouvrez une issue ou une PR avec la version de Smode
 Compose testée. Merci d'indiquer si un point de cette référence est devenu obsolète suite à une
 mise à jour Smode Tech.
