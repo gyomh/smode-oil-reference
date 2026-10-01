@@ -469,8 +469,9 @@ pas seulement le script lui-même.
 - **Ne jamais faire attendre le fil principal** un sous-processus qui interroge l'interface Smode
   (UI Automation) : pendant l'attente, Smode ne répond plus à UIA (`0 elements`, ou `FindAll`
   « Unrecognized error »). `subprocess.run` direct et fil séparé + `join()` échouent tous deux ;
-  `Popen` non bloquant fonctionne. (Un test du 30/09 avec `join` avait réussi : comportement non
-  fiable, ne pas s'y fier.)
+  `Popen` non bloquant fonctionne. Constaté dans un script lancé par Execute et via le pont ; un autre
+  script utilisant la même lecture avec `join` fonctionnait pourtant chez l'auteur : cause de la différence
+  non élucidée, le motif non bloquant ci-dessous est donc le plus sûr.
 - **Motif qui marche** : le Script lance un fil `daemon` et retourne aussitôt ; le fil fait son travail
   (sous-processus, réseau), puis fait exécuter le code Oil sur le fil principal en postant
   `{"code": ...}` sur un pont HTTP local tournant dans un Script « At Every Update » (voir "Le pont
