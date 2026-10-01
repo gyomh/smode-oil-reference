@@ -398,6 +398,11 @@ enums qui exigent `.set()`.
 - Structure sous-jacente (visible en clair dans un `.compo`/`.project` sauvegardé) :
   `TimelineCue.elementTracks` = `Map({key = WeakPointer(Element), value = ElementTrack})`,
   `ElementTrack.blocks` = `OwnedVector(ElementTrackBlock)`.
+- Parcourir les clips : `for element, track in timeline.elementTracks.items()` ; `element.get()` donne
+  le layer, `track.blocks[0]` le premier bloc (`.position` / `.length` en secondes). `elt.isChildOf(layer)`
+  est **vrai aussi pour le layer lui-même** (`elt == layer` marche aussi). Pour une Scene, le propriétaire
+  de la timeline est le layer (`scene.layers` + `scene.mainAnimation`) ; pour un layer Compo, c'est
+  `layer.generator`. Toute timeline créée s'appelle « Main Timeline » (non renommable).
 - **Bug d'affichage lié à l'ordre de construction** → voir "Bugs UI connus" : construire toute la
   timeline (`createBlock` + réglages) AVANT que la `Compo` soit insérée dans l'arbre du document
   fait planter la synchro du panneau Timeline (layers invisibles, lecture correcte quand même).
@@ -458,6 +463,38 @@ pas seulement le script lui-même.
   `if "x" not in globals()` garde aussi l'ancienne classe de handler. Solution du pont : case
   `restartServer` (purge des fonctions absentes du source via `ast` + `script.script.sourceCode.get()`,
   puis redémarrage du serveur dans un thread — `shutdown()` bloquerait le thread principal).
+
+### Sous-processus et fils depuis un Script — confirmé R15 (01/10/2026)
+
+- **Ne jamais faire attendre le fil principal** un sous-processus qui interroge l'interface Smode
+  (UI Automation) : pendant l'attente, Smode ne répond plus à UIA (`0 elements`, ou `FindAll`
+  « Unrecognized error »). `subprocess.run` direct et fil séparé + `join()` échouent tous deux ;
+  `Popen` non bloquant fonctionne. (Un test du 30/09 avec `join` avait réussi : comportement non
+  fiable, ne pas s'y fier.)
+- **Motif qui marche** : le Script lance un fil `daemon` et retourne aussitôt ; le fil fait son travail
+  (sous-processus, réseau), puis fait exécuter le code Oil sur le fil principal en postant
+  `{"code": ...}` sur un pont HTTP local tournant dans un Script « At Every Update » (voir "Le pont
+  MCP"). Le fil lui-même ne touche jamais à Oil.
+- **Retour d'info** : les paramètres d'un Script ne sont pas modifiables depuis l'extérieur (voir
+  « Limite majeure »), mais `tool.label = "..."` l'est (retrouver le `PythonScriptTool` en parcourant
+  `layer.generator.tools`, par préfixe de label ; `getUniqueIdentifier()` est inutilisable). Un Script
+  qui remet son propre `script.label` à chaque exécution garde le préfixe stable.
+- `tool.script.numExecutions.get()` = 0 : l'Execute cliqué n'a pas atteint ce Script (mauvaise ligne,
+  ancien script homonyme, ou script absent du projet rechargé sans sauvegarde).
+- Créer un Script dans un projet : `t = Oil.createObject("PythonScriptTool")`, `t.script.sourceCode.set(src)`,
+  `t.launchMode.set(0)`, `t.label = "Nom"`, `layer.generator.tools.append(t)` — confirmé.
+
+### Lire la sélection de l'UI (UI Automation, hors Oil)
+
+Oil n'expose aucune sélection (rien dans `engine`, `project`, scènes, timelines). Voir le projet
+`smode-selection-reader` : lecture du titre du panneau Paramètres. Limites : un seul panneau
+Paramètres non verrouillé ; l'arbre UIA est plat (≈780 enfants sous la fenêtre, ≈1500 éléments
+`Custom` sans nom) donc **le nom d'une timeline sélectionnée est toujours « Main Timeline »**,
+impossible de savoir de quelle scène/compo elle vient — sélectionner le layer de la scène/compo.
+`FindAll` coûte ≈5 ms par élément même filtré par type : mettre en cache la position du titre,
+`AutomationElement.FromPoint` (renvoie un `Custom` vide sur le titre) puis les voisins
+`TreeWalker.RawViewWalker` (`GetNextSibling`/`GetPreviousSibling`) pour trouver le `Text` (≈1 s au lieu
+de 4 s). `Add-Type -AssemblyName WindowsBase` requis pour `System.Windows.Point`.
 
 ## Bugs UI connus
 
