@@ -15,6 +15,13 @@
 - [Pointeurs polymorphes (OwnedPointer)](#pointeurs-polymorphes-ownedpointer)
 - [Enums : jamais deviner l'index](#enums--jamais-deviner-lindex)
 - [Cartographie de l'arbre projet](#cartographie-de-larbre-projet)
+- [Géométrie 3D : GeometryLayer, placement, angles](#géométrie-3d--geometrylayer-placement-angles-confirmé-r15-06102026)
+- [Verrou et activation (ActivationState)](#verrou-et-activation-activationstate)
+- [Matériaux partagés, références, profondeur](#matériaux-partagés-références-profondeur-r15)
+- [Caméra de la Compo](#caméra-de-la-compo-r15)
+- [Texte (TextLayer)](#texte-textlayer)
+- [Parameter banks liées à un Script](#parameter-banks-liées-à-un-script-r15)
+- [Vérifier visuellement (hors API)](#vérifier-visuellement-hors-api)
 - [Système de Parameters / Links / Cues](#système-de-parameters--links--cues)
 - [Timeline (TimelineCue)](#timeline-timelinecue)
 - [Audio réactif](#audio-réactif)
@@ -320,7 +327,101 @@ plutôt que corriger les objets existants en place.
   `{str(l.label.get()): l for l in (comp.layers[i] for i in range(len(comp.layers)))}`.
 - Le projet ouvert est `script.project` (`.masterScene`, `.pipeline`) ; `engine.content.
   customContent` est toujours vide, ne pas y chercher le projet.
-- Exemple complet (bras IK 2 segments dans le plan XY, loi des cosinus) : projet `Smode_IK`.
+- Exemple complet (rig IK/FK de N bones, poignées, banks) : projet `Smode_IK`, script `ik_arm_solver.py`.
+- `PlaneGeometryGenerator` : `size.width/height` (`Size2d`, pas `.x/.y`), `anchor` (`Canvas2dPosition`, 0,5
+  = centre) ; **le plan naît couché dans le plan XZ (normale = Y local)** : pour le dresser face à +Z,
+  rotation `orientation.x = -π/2` (colonnes `[[1,0,0],[0,0,1],[0,-1,0]]`).
+- `CircleGeometryGenerator` = **contour seulement** : rendu en surface → erreur UI « Surface No Triangles
+  information in geometry » ; à rendre avec `ThickLinesGeometryRenderer` (`map` = `UniformTextureGenerator`
+  dont `.color` règle la couleur du trait ; `thickness` en px). `SphereGeometryGenerator.precision` =
+  `Precision2d` (`.uniform = False` avant de régler `.x/.y`). `CapsuleGeometryGenerator` : axe Y, pivot à la base.
+- `NullLayer` : **invisible et non sélectionnable dans le viewport** (seulement dans l'arbre) ; pour une
+  poignée cliquable, utiliser une vraie géométrie (plan).
+- `Group3dLayer` : `worldMatrix` lisible (colonnes `m.x/.y/.z/.w`, vaut 0 avant la 1re évaluation) ;
+  un calque hors du groupe ne suit pas sa transformation sauf si le script l'applique.
+- Matrice monde : `layer.worldMatrix` → `m.x.x.get()`... ; rotation = colonnes normalisées.
+
+## Verrou et activation (ActivationState)
+
+- `layer.editable` (cadenas du calque : non sélectionnable dans le viewport), `layer.activation`
+  (œil : inactif = hors rendu) et `solo` sont des **`ActivationState`**.
+- **`.set()` prend un BOOLÉEN** (`True` = actif / modifiable, `False` = inactif / verrouillé). Y passer
+  un entier est lu comme « vrai » et ne change rien (silencieux). `.get()` renvoie 0 (actif) ou 2
+  (inactif) ; `.toString()` donne `'active'` / `'inactive'`.
+- **Ne pas faire** : `Oil.createObject('ActivationState')` ni `dir()` sur une de ces variables → plantage
+  complet de Smode (observé). Lire/écrire la valeur d'un objet existant est sûr.
+- Un `MaterialBank`, un `ParameterBank`, un calque texte se verrouillent de la même façon
+  (`obj.editable.set(False)`), avant ou après l'`append`.
+
+## Matériaux partagés, références, profondeur (R15)
+
+- `Group3dLayer.tools` accepte un `MaterialBank` (`Oil.createObject('MaterialBank')`) dont `.materials`
+  est un `OwnedVector(GeometryLayerUser)` : on y met un `SurfaceGeometryRenderer` (le matériau, `label`
+  = son nom). Réglages utiles : `side` (0 front, 1 back, 2 both), `autoIlluminate`, `depthBuffer.test` /
+  `.write`, `components[0]` = `DiffuseSurfaceComponent` (`map` = n'importe quel `TextureGenerator`, dont
+  une `Compo` 1024² à fond transparent contenant un `ShapeLayer` → icône vectorielle ; `masks` =
+  `GeometryMask`). Un nouveau `SurfaceGeometryRenderer` a 2 composants (Diffuse + Specular).
+- **Référencer un matériau depuis un calque** (`layer.renderer = ...`) :
+  ```python
+  r = Oil.createObject('ReferenceGeometryLayerUser')
+  ad = r.referencer.address
+  ad.directPointer.set(material)      # l'objet matériau lu dans bank.materials[j]
+  ad.location.set(1)                  # 1 = pointeur direct ; la valeur par défaut 0 donne
+                                      # « Unspecified reference » et le calque disparaît
+  layer.renderer = r
+  ```
+  `ad.target.get()` n'est non-None que quand la référence est résolue. **Une référence garde un état en
+  cache** : après modification du matériau (ex. `depthBuffer.test`), faire
+  `layer.renderer.referencer.reloadInstance.trig()` sur chaque calque qui le référence, ou recréer la
+  référence. Une référence posée depuis l'extérieur du groupe qui contient le bank peut signaler
+  « No direct pointer ».
+- Un plan **tourné face à la caméra coupe les autres plans** : le test de profondeur cache la moitié
+  qui passe derrière (poignée « coupée en L »). Pour une poignée toujours visible : matériau avec
+  `depthBuffer.test = False` + `reloadInstance` sur les références.
+- `SphereGeometryMask` (dans `components[0].masks`) a rendu le plan invisible dans nos essais ; la façon
+  fiable de dessiner un cercle/icône sur un plan est une texture avec alpha (Compo + ShapeLayer).
+- Création d'un matériau par script (aucun appel UI) : voir `make_icon_material` dans `ik_arm_solver.py`
+  (`GroupShapeGenerator.shapes` ← `LineShapeGenerator` avec `segment.begin/end` en coordonnées 0-1 ;
+  `DefaultShapeRenderer` : `fill.enabled`, `stroke.enabled/.color/.thickness` en pixels de la texture).
+
+## Caméra de la Compo (R15)
+
+- `compo.currentCamera.get()` (caméra courante, celle de la liste des éléments) peut être **différente** de
+  `compo.defaultCamera` (caméra interne d'une Compo neuve). Lire d'abord `currentCamera`.
+- Placement `TargetOrientationDistance3dPlacement` (caméra « orbitale ») : `target` (`Position3d`),
+  `orientation` (`EulerAngles`, ordre 0), `distance` ; **pas de `position`** (AttributeError). Frustum
+  `FieldOfViewPerspectiveFrustum` : `horizontal` / `vertical` en radians.
+- Rotation monde de la caméra = `Rz·Ry·Rx(orientation)` (sans transposée), position = `target + R·(0,0,distance)`.
+  Vérifié en projetant des points connus (perspective, FOV 60°) et en comparant aux pixels d'une capture :
+  4,7 px RMS contre 36 px pour la convention suivante. Un plan billboard = `R_cam · Rx(-90°)`.
+
+## Texte (TextLayer)
+
+- `TextLayer` = `generator` `LocalTextGenerator` (`text` MultiLineString `.set('...')`, accents OK ;
+  `style.size`, `style.foreground` `HsvColor` en 0-1, **`style.background` = `Option(HsvColor)` : `.enabled` +
+  `.value` (alpha = opacité du fond)**) + `renderer` `DefaultTextRenderer` : `placement.position` (fractions
+  0-1 de la compo), `size.width.type` (0 auto, **1 wordWrap**, 2 shrinkToFit) + `size.width.size` (px),
+  `size.height.type` (0 auto), `style.alignment` (0 middleCenter, 1 middleLeft, 2 middleRight, 3 topCenter,
+  4 topLeft). Résolution de la compo : `compo.rasterizer.resolution.width.get()`.
+- Pour qu'un texte d'avertissement ne soit pas rendu : `layer.activation.set(False)` et texte vide quand
+  il n'y a rien à dire.
+
+## Parameter banks liées à un Script (R15)
+
+- Un `Parameter(Boolean)` / `Parameter(Angle)` / ... (`Oil.createObject('Parameter(Angle)')`) porte
+  `label`, `value`, `expose`, `modifiers` et **`targets` : `OwnedVector(LinkTarget)`** — pas besoin de
+  `LinkBank` : `lt = Oil.createObject('ParameterLinkTarget'); lt.target.set(script.maVariable);
+  p.targets.append(lt); bank.parameters.append(p)`. Valeur initiale du Parameter = valeur courante de la
+  variable. Le Parameter prend la couleur de son bank (`colorLabel`). Le lien est à sens unique
+  (bank → script) : un paramètre que le script remet lui-même à zéro (bouton) reste coché dans le bank.
+- Le `colorLabel` de tout élément : `c = o.colorLabel; c.red.set(r/255)` (valeurs 0-1, `SrgbColor`).
+
+## Vérifier visuellement (hors API)
+
+Le rendu ne se lit pas par script. Technique qui marche : PowerShell, `GetWindowRect` du processus
+Smode + `Graphics.CopyFromScreen` sur ce rectangle seul (jamais l'écran entier), puis lecture du PNG.
+Recadrer sur le viewport pour lire une icône ; la barre d'état en bas de la fenêtre donne les erreurs
+de rendu (« No direct pointer », « Unspecified reference », « No Triangles... »).
 
 ## Scene imbriquée (nested Scene layer)
 
@@ -459,12 +560,25 @@ status.state/.message` (erreur), `.script.lastExecuteResult.printed` (stdout du 
 `tool.script.parentElement` pointe vers son conteneur DIRECT, pas la scène racine — piège si on
 suppose la même structure que le script du pont MCP lui-même.
 
-**Limite majeure** : les paramètres déclarés en tête d'un Script (`nom: Oil.Type(...)`) ne sont
-PAS introspectables depuis l'extérieur du script (ni `.dynamicVariables` — toujours vide — ni
-`getVariableByName`). Impossible de câbler par script un WeakPointer exposé en paramètre d'un
-AUTRE Script ; seul l'utilisateur peut le faire à la main (drag & drop dans l'UI). Un script peut
-en revanche s'auto-câbler lui-même au premier run (`if script.x.get() is None: script.x.set(...)`)
-puisque ça se passe depuis l'intérieur.
+**Paramètres déclarés (`nom: Oil.Type(...)`) — CORRIGÉ R15 (06/10/2026)** : l'ancienne version de
+cette référence affirmait qu'ils n'étaient pas introspectables de l'extérieur (`.dynamicVariables`
+vide). C'est faux **une fois le script compilé** (`tool.execute.trig()` après `sourceCode.set`) :
+`tool.dynamicVariables` liste les paramètres **dans l'ordre de déclaration** et chacun est lisible
+ET modifiable : `dv[i].get()`, `dv[i].set(v)`, `dv[i].getFriendlyName()` (libellé affiché), slots
+`WeakPointer` (`dv[i].set(layer)`), vecteurs (`dv[0][k].set(layer)`), boutons Boolean (`.set(True)`).
+Un câblage de slots par script est donc possible. Les valeurs et les liens (Parameter bank →
+paramètre) **survivent à une recompilation** tant que le nom de la variable ne change pas ; renommer
+une variable détruit l'ancien paramètre (nouvel objet, valeur par défaut).
+- Libellé affiché = nom de variable : camelCase coupé en mots, **espace inséré avant un chiffre**
+  (`bone3Rotation` → « Bone 3Rotation », `boneRotation3` → « Bone Rotation 3 », `BONE3Rotation` →
+  inchangé). Impossible d'obtenir « Bone3 Rotation » ni un numéro dynamique côté Script ; le libellé
+  d'un `Parameter` de bank, lui, est libre (`p.label = ...`).
+- Types vus : `Oil.Boolean`, `Oil.Meters`, `Oil.PositiveMeters`, `Oil.PositiveInteger`, `Oil.String`,
+  `Oil.createObject("Angle")`, `Oil.createObject("WeakPointer(Layer)")`,
+  `Oil.createObject("OwnedVector(WeakPointer(Layer))")` (liste de slots dont le script règle la
+  taille lui-même avec `append` / `removeAt`, ex. selon un entier « nombre de bones »).
+- Un `Real` refuse un `int` Python (`TypeError ... expected Real or float`) : toujours `float(...)`.
+- Un script peut aussi s'auto-câbler / se recolorer lui-même (`script.colorLabel`, `script.x.set(...)`).
 
 **Cascade d'activation** : un calque racine `activation="inactive"` gèle tout ce qui est dessous
 (y compris des Scripts "At Every Update" imbriqués), sans erreur ni message. Réflexe de debug si
@@ -501,8 +615,9 @@ pas seulement le script lui-même.
   (sous-processus, réseau), puis fait exécuter le code Oil sur le fil principal en postant
   `{"code": ...}` sur un pont HTTP local tournant dans un Script « At Every Update » (voir "Le pont
   MCP"). Le fil lui-même ne touche jamais à Oil.
-- **Retour d'info** : les paramètres d'un Script ne sont pas modifiables depuis l'extérieur (voir
-  « Limite majeure »), mais `tool.label = "..."` l'est (retrouver le `PythonScriptTool` en parcourant
+- **Retour d'info** : les paramètres d'un Script se règlent de l'extérieur via `tool.dynamicVariables`
+  (voir « Paramètres déclarés », corrigé R15) ; `tool.label = "..."` reste le moyen le plus simple de
+  rendre un état visible dans l'arbre (retrouver le `PythonScriptTool` en parcourant
   `layer.generator.tools`, par préfixe de label ; `getUniqueIdentifier()` est inutilisable). Un Script
   qui remet son propre `script.label` à chaque exécution garde le préfixe stable.
 - `tool.script.numExecutions.get()` = 0 : l'Execute cliqué n'a pas atteint ce Script (mauvaise ligne,
@@ -558,6 +673,16 @@ Deux crashs complets de Smode rencontrés en construisant cette référence :
 
 Aucun des deux n'est arrivé en respectant la [règle d'or](#règle-dor--configurer-avant-dajouter-jamais-après)
 (tout configurer avant, jamais retoucher après). À ce stade, c'est la meilleure protection connue.
+
+Deux autres crashs complets (R15, 06/10/2026), tous deux dus à du **sondage d'énumérations internes** :
+3. `Oil.createObject('ActivationState')` suivi d'un `dir()` sur une variable `ActivationState`.
+4. Une boucle `.set(0..4)` sur `ReferenceGeometryLayerUser().referencer.address.location` (créée à neuf).
+Règle : ne jamais tester des valeurs d'une énumération inconnue. Lire la valeur d'un objet existant
+(`.get()`), puis re-poser **cette** valeur ou une valeur connue (ex. `location.set(1)`).
+
+Après un plantage, Smode peut **rouvrir une vieille sauvegarde** : les sauvegardes automatiques sont dans
+`Documents\Smode Files\<projet>.project\.versions` (toutes les 5 min) ; une recherche de texte dans
+le fichier (`IconFleche`, nom d'un objet) dit laquelle contient le travail voulu.
 
 ## Le pont MCP (rappel)
 
