@@ -610,6 +610,16 @@ une variable détruit l'ancien paramètre (nouvel objet, valeur par défaut).
           if c is comp: return d          # le même élément Smode donne toujours le même objet Python
       d = {}; reg.append((comp, d)); return d
   ```
+- **Un Script peut vivre dans un `Group3dLayer`** (`group.tools.append(tool)`) : `script.parentElement` est
+  alors le groupe (`.layers`, `.tools`, `.placement`, `.worldMatrix`), pas la Compo. Chaîne de parents
+  vérifiée : script → `Group3dLayer` → (groupes imbriqués…) → `Compo` → `TextureLayer` → `Scene` → `Project`
+  (`element.parentElement`, `AttributeError` au sommet). `rasterizer`, `currentCamera` et `defaultCamera`
+  n'existent que sur la **Compo** : la retrouver en remontant les parents jusqu'à `getOilClassName() ==
+  'Compo'`. `Group3dLayer.tools` accepte `PythonScriptTool`, `ParameterBank` et `MaterialBank`. La
+  `worldMatrix` d'un groupe **hérite des groupes parents** (rotation / position cumulées) : un rig dans un
+  groupe lui-même dans un groupe tourné fonctionne si on travaille en coordonnées locales du groupe et si on
+  lit la `worldMatrix` du groupe pour toute orientation monde (ex. poignée face à la caméra). Permet des rigs
+  imbriqués (corps > bras, jambes) avec un script par groupe (voir état par script ci-dessus).
   Vérifié : `comp_a is comp_b` est vrai pour deux lectures du même élément, y compris après `gc.collect()`.
   (`getUniqueIdentifier()` lève une exception, `WeakPointer.toString()` renvoie une chaîne vide : pas
   utilisables comme identifiant.) Un script collé depuis un fichier Windows peut avoir des fins de ligne
