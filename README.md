@@ -536,6 +536,22 @@ enums qui exigent `.set()`.
 - Frame rate global du projet, pour convertir images → secondes : `engine.configuration.timing.
   requestedFrameRate` (`VideoTimeBase` avec `.p`/`.q`, ex. 60/1 = 60fps). Pas de propriété
   framerate sur `Compo`/`Pipeline` — c'est un réglage moteur, partagé entre projets ouverts.
+- **Animation de paramètres (R15)** : animer une position par clés crée dans la timeline principale
+  (`project.masterScene.mainAnimation`, pas `compo.mainAnimation`) une entrée de
+  `TimelineCue.parameterTracks` = `Map(ObjectWeakPointer → ParameterTrack(Seconds, Meters))` ; la piste a
+  `targetParameter` et `function` = `KeyframeFunction` (`.keyframes`, `len()`, temps dans `.input`). Une piste
+  par axe (`x`, `y`) de chaque `Placement`. Lecture par script : `ma.transport.position.set(t)`,
+  `ma.transport.play.trig()` / `pause.trig()`, `ma.transport.playing.get()`.
+- **Deux écrivains sur une même valeur** : la timeline **réécrit à chaque image** les paramètres qu'elle
+  anime, y compris la valeur tenue après la dernière clé. Un Script « At Every Update » qui écrit aussi
+  ces paramètres entre en conflit ; s'il compare « position lue » et « position que j'ai écrite » pour
+  détecter une manipulation à la main, il prend la réécriture de la timeline pour un tirage (symptôme :
+  animation qui saute 1 image sur 2 après la dernière clé). Remède : ne conclure à une action manuelle que
+  si la valeur lue change **aussi par rapport à l'image précédente** (la timeline réécrit à l'identique, un
+  tirage change à chaque image), ou ne pas écrire sur les paramètres animés.
+- Diagnostic image par image : faire écrire une ligne par exécution du Script dans un fichier
+  (`open(path, 'a')`), jouer la timeline par script, puis analyser le fichier (les appels du pont ne sont
+  pas synchrones avec les images).
 
 ## Audio réactif
 
