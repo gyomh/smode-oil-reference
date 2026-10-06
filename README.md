@@ -102,9 +102,11 @@ obj.size.width = 1000.0
 obj.size.height = 200.0
 ```
 
-Concerné : `Canvas2dSize` (placement/scale), `Size3d(PositiveMeters)` (géométrie 3D — ici pas de
-`.linked`, x/y/z indépendants), `InheritableImageResolution`, `ImageResolution`,
-`CheckerBoardTextureGenerator.size/.balance`.
+Concerné : `Canvas2dSize` (placement/scale), `Size3d(PositiveMeters)` (géométrie 3D — **a aussi
+un `.linked`, True par défaut** : sur un `BoxGeometryGenerator`, `size.x = 1.0; size.y = 0.1;
+size.z = 0.1` donne 0.1 / 0.1 / 0.1 sans erreur, corrigé en mettant `size.linked = False` AVANT ;
+corriger après coup sur un objet déjà appended fonctionne), `InheritableImageResolution`,
+`ImageResolution`, `CheckerBoardTextureGenerator.size/.balance`.
 
 Générateur de couleur unie (layer "Uniform" dans l'UI) : `UniformTextureGenerator` — `.color`
 est un `HsvColor` (`.red`/`.green`/`.blue`/`.hue`/`.saturation`/`.value`/`.alpha`, chacun un
@@ -296,6 +298,29 @@ Piège annexe : modifier `.placement.scale`/`.position`/`.resolution` sur une `C
 **appended** (re-fetch après coup) retombe dans le pattern crash-prone documenté plus haut — en
 cas d'erreur de valeur après append, préférer `areas.clear()` + recréer les zones proprement
 plutôt que corriger les objets existants en place.
+
+## Géométrie 3D : GeometryLayer, placement, angles (confirmé R15, 06/10/2026)
+
+- **Les angles Python sont en RADIANS** (`placement.orientation.z = math.radians(90)`), pas en
+  degrés. Piège silencieux : écrire `77.5` donne 77.5 rad modulo 2π (≈123°), sans erreur. Vérifié en
+  relisant `layer.worldMatrix` (`m.x.x.get()`, `m.x.y.get()` = axe X monde, `m.w.x/.y/.z` = position).
+- `GeometryLayer` : `generator` (`OwnedPointer(GeometryV9Generator)` : `BoxGeometryGenerator`
+  `.size`, `SphereGeometryGenerator` `.radius`, `CylinderGeometryGenerator`), `renderer`
+  (`SurfaceGeometryRenderer`), `placement` (`PositionOrientationSize3dPlacement`, déjà instancié) :
+  `anchor` (x/y/z Meters), `position` (x/y/z Meters), `orientation` (`EulerAngles` : x/y/z Angle +
+  `order` + `axisAngle`), `target` (`Placement3dTarget` : `axis`, `targetObject`, `upVector` =
+  look-at natif), `size` (`Size3d(Real)`). Pas de hiérarchie parent/enfant entre `GeometryLayer`
+  (pas de `.layers`) ; `GroupLayer` n'a qu'un `Placement2d`.
+- **Aucune classe IK / Bone / Skeleton / Constraint dans Smode** (`createObject` échoue ; les
+  mots-clés n'existent que dans les importeurs FBX / Assimp / NatNet). Un IK se calcule à la main.
+- **Écrire un placement depuis un Script « At Every Update » fonctionne** (≈1900 exécutions sans
+  erreur, lecture/écriture de `layer.placement.position.x = v` sur des layers déjà appended, aucun
+  crash). Dans un `PythonScriptTool` placé dans `compo.tools`, `script.parentElement` est la
+  **Compo** (`.layers`), pas la scène. Retrouver les layers par label :
+  `{str(l.label.get()): l for l in (comp.layers[i] for i in range(len(comp.layers)))}`.
+- Le projet ouvert est `script.project` (`.masterScene`, `.pipeline`) ; `engine.content.
+  customContent` est toujours vide, ne pas y chercher le projet.
+- Exemple complet (bras IK 2 segments dans le plan XY, loi des cosinus) : projet `Smode_IK`.
 
 ## Scene imbriquée (nested Scene layer)
 
