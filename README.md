@@ -682,6 +682,25 @@ impossible de savoir de quelle scène/compo elle vient — sélectionner le laye
 `TreeWalker.RawViewWalker` (`GetNextSibling`/`GetPreviousSibling`) pour trouver le `Text` (≈1 s au lieu
 de 4 s). `Add-Type -AssemblyName WindowsBase` requis pour `System.Windows.Point`.
 
+### Scripts qui s'auto-installent (rig IK) — confirmé R15 (07/10/2026)
+
+- **Se déplacer soi-même** : `copie = script.clone()` (copie source + variables), `groupe.tools.append(copie)`,
+  puis retirer l'original de `parent.tools` en le retrouvant avec **`is`** (`parent.tools[i] is script`).
+  `getUniqueIdentifier()` n'est pas convertible en Python (`Unable to convert ... juce::Uuid`).
+- **Écrire dans un script depuis un autre code** : `tool.script.sourceCode.set(src)` recompile et exécute une fois ;
+  `tool.execute.trig()` = une exécution (utile pour tester image par image ; `script.numExecutions` reste fixe si le
+  script ne tourne pas tout seul).
+- **Un `Parameter` de ParameterBank lié (`ParameterLinkTarget`) repose sa propre valeur sur la cible à chaque mise à
+  jour** : écrire seulement la variable du script est annulé (ex. un bouton `Create Rig` remis à False). Écrire aussi
+  dans les Parameters dont `p.targets[k].target.get() is var`. Inversement, un champ de bank n'est pas rempli quand on
+  remplit la variable côté script : écrire `p.value.set(...)` aussi.
+- **`WeakPointer(Layer).set(None)` est refusé** (TypeError) : pour vider des emplacements, vider l'`OwnedVector`
+  (`removeAt`) et y ajouter de nouveaux `Oil.createObject('WeakPointer(Layer)')`.
+- **Variables de script vectorielles** : `Oil.createObject("OwnedVector(Boolean)")` (+ `append(Oil.createObject('Boolean'))`)
+  fonctionne ; un élément peut être la cible d'un `ParameterLinkTarget` (`lt.target.set(vec[i])`).
+- Les écritures de valeur de Parameter faites par l'API ne se propagent au script qu'à la mise à jour suivante de
+  Smode (pas dans le même appel) : pour tester, écrire directement la variable du script.
+
 ## Bugs UI connus
 
 - **Liens affichés "Disconnected"** après création via l'API alors qu'ils fonctionnent réellement
