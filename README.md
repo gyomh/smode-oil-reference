@@ -595,6 +595,25 @@ une variable détruit l'ancien paramètre (nouvel objet, valeur par défaut).
   taille lui-même avec `append` / `removeAt`, ex. selon un entier « nombre de bones »).
 - Un `Real` refuse un `int` Python (`TypeError ... expected Real or float`) : toujours `float(...)`.
 - Un script peut aussi s'auto-câbler / se recolorer lui-même (`script.colorLabel`, `script.x.set(...)`).
+- **Les scripts partagent le même espace de noms global (R15, 06/10/2026).** Deux copies du même script
+  dans un projet (ex. un rig de bras et un rig de jambe) lisent et écrivent les **mêmes** `globals()` :
+  un drapeau « initialisation à l'import faite » posé par le premier empêche le second de créer ses
+  objets (banks de paramètres jamais créées), un cache d'étiquette partagé bloque la mise à jour du
+  `label` du second, et tout état mémorisé d'une image à l'autre (pose précédente, etc.) est mélangé
+  entre les deux. **Ne jamais stocker d'état par script dans `globals()` directement** : ranger l'état
+  dans un registre indexé par l'objet qui distingue le script, par exemple sa compo :
+  ```python
+  def S():
+      reg = globals().setdefault('_REGISTRY', [])
+      comp = script.parentElement
+      for c, d in reg:
+          if c is comp: return d          # le même élément Smode donne toujours le même objet Python
+      d = {}; reg.append((comp, d)); return d
+  ```
+  Vérifié : `comp_a is comp_b` est vrai pour deux lectures du même élément, y compris après `gc.collect()`.
+  (`getUniqueIdentifier()` lève une exception, `WeakPointer.toString()` renvoie une chaîne vide : pas
+  utilisables comme identifiant.) Un script collé depuis un fichier Windows peut avoir des fins de ligne
+  `\r\n` : sans effet sur l'exécution, mais `sourceCode.get() == fichier` est alors faux.
 
 **Cascade d'activation** : un calque racine `activation="inactive"` gèle tout ce qui est dessous
 (y compris des Scripts "At Every Update" imbriqués), sans erreur ni message. Réflexe de debug si
