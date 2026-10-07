@@ -16,6 +16,7 @@
 - [Enums : jamais deviner l'index](#enums--jamais-deviner-lindex)
 - [Cartographie de l'arbre projet](#cartographie-de-larbre-projet)
 - [Géométrie 3D : GeometryLayer, placement, angles](#géométrie-3d--geometrylayer-placement-angles-confirmé-r15-06102026)
+- [Lumières 3D](#lumières-3d-r15-07102026)
 - [Verrou et activation (ActivationState)](#verrou-et-activation-activationstate)
 - [Matériaux partagés, références, profondeur](#matériaux-partagés-références-profondeur-r15)
 - [Caméra de la Compo](#caméra-de-la-compo-r15)
@@ -174,10 +175,16 @@ Toujours vérifier `prop.getOilClassName()` avant de fixer un index. Valeurs con
 
 `Oil.CustomEnumeration(("a","b"), 0)` documenté officiellement **ne fonctionne pas**
 (`AttributeError`). Fix : déclarer `x: Oil.createObject("CustomEnumeration")` vide, peupler dans
-le corps du script avec `CustomEnumerationElement` (`.label`=texte, `.value`=int) via
-`.elements.append(...)`, protégé par `if len(script.x.elements) == 0`. `.set()/.get()` utilisent
-le label (string), contrairement aux enums natifs qui utilisent un entier. Alternative plus simple
-si un simple booléen suffit : `Oil.Boolean` évite tout ce bug.
+le corps du script avec des `CustomEnumerator` (`.label`=texte, `.value`=int) via
+`.enumerators.append(...)`, protégé par `if len(script.x.enumerators) == 0`. **R15 (07/10/2026) :
+l'attribut s'appelle `enumerators` (`OwnedVector(CustomEnumerator)`) ; les anciens noms
+`elements` / `CustomEnumerationElement` n'existent plus** (`AttributeError` / `unknown Oil type
+name`). `.set()/.get()` utilisent le label (string), contrairement aux enums natifs qui utilisent
+un entier. Alternative plus simple si un simple booléen suffit : `Oil.Boolean` évite tout ce bug.
+
+Enum `Placement3dTargetAxis` (`placement.target.axis`, lisible via `.toString()`) : 0 = xPos,
+1 = xNeg, 2 = zPos (défaut), 3 = zNeg ; 4 et 5 ne sont pas valides (valeurs testées sur un objet
+jetable non ajouté à la scène).
 
 ## Cartographie de l'arbre projet
 
@@ -340,6 +347,30 @@ plutôt que corriger les objets existants en place.
 - `Group3dLayer` : `worldMatrix` lisible (colonnes `m.x/.y/.z/.w`, vaut 0 avant la 1re évaluation) ;
   un calque hors du groupe ne suit pas sa transformation sauf si le script l'applique.
 - Matrice monde : `layer.worldMatrix` → `m.x.x.get()`... ; rotation = colonnes normalisées.
+
+## Lumières 3D (R15, 07/10/2026)
+
+- Classes instanciables avec `Oil.createObject` et ajoutées **directement à `layers`** (pas de
+  `LightLayer` / wrapper) : `SpotLight`, `PointLight`, `DirectionalLight`, `AmbientLight`.
+  `AreaLight` est abstraite (`cannot instantiate abstract class`).
+- Attributs communs : `intensity` (`Percentage`), `diffuse` (`LightComponentParameters` : `.color`
+  `HsvColor`, `.level`, `.enable`), `specular` (`.color`, `.level`, `.shininess`, `.enable`),
+  `placement` (`PositionOrientationSize3dPlacement`, comme un `GeometryLayer`), `visibilityScope`
+  (`LightVisibilityScope`, défaut 0 = `compoAndSubCompos` : **une lumière dans un `Group3dLayer`
+  éclaire toute la compo**, pas seulement le groupe), `volumetric`, `activation`.
+- Spécifiques : `SpotLight` (`attenuation`, `radialAttenuation` = `FalloffFunction(PositiveAngle)` avec
+  `.interval` / `.exponent`, `color`, `backgroundColor`), `PointLight` (`radius`, `attenuation`,
+  `areaNoise`, `areaNumSamples`, `directionalMap`), `DirectionalLight` (`shadowParameters`).
+  `AmbientLight` n'a que les attributs communs.
+- **Viser un point** : `light.placement.target.targetObject.set(layer)` (`WeakPointer(Layer)`, un
+  `NullLayer` convient) + `placement.target.axis` (enum, voir « Enums »). **Un Spot émet vers son
+  -Z local** alors que le défaut `axis = zPos (2)` aligne le +Z vers la cible : sans `axis.set(3)`
+  (zNeg) la lumière éclaire à l'opposé. Vérification par script : avec zNeg, la colonne `z` de
+  `worldMatrix` a un produit scalaire positif avec la position de la lumière (elle pointe à
+  l'opposé de la cible). Position sphérique autour de la cible : `x = d·cos(el)·sin(az)`,
+  `y = d·sin(el)`, `z = d·cos(el)·cos(az)` (azimut 0 = côté +Z, +90° = +X).
+- Intensité / couleur / activation se modifient après l'`append` sans problème (mise à jour en place
+  d'un rig existant depuis un Script). Exemple complet : `light_setup.py` (projet `Smode_LightSetup`).
 
 ## Verrou et activation (ActivationState)
 
@@ -593,6 +624,21 @@ une variable détruit l'ancien paramètre (nouvel objet, valeur par défaut).
   `Oil.createObject("Angle")`, `Oil.createObject("WeakPointer(Layer)")`,
   `Oil.createObject("OwnedVector(WeakPointer(Layer))")` (liste de slots dont le script règle la
   taille lui-même avec `append` / `removeAt`, ex. selon un entier « nombre de bones »).
+- **Les déclarations de paramètres doivent précéder tout autre statement, `import` compris**
+  (`ScriptStatementOrderException: Parameter declarations should be placed before any other
+  statement`) : mettre `import math` etc. après le bloc de déclarations.
+- **Noms réservés** : toute variable de script qui porte le nom d'un attribut natif d'élément (ex.
+  `preset`, `label`, `tools`, `activation`) entre en conflit : `script.preset` renvoie le
+  `ElementPresetSelector` natif, pas votre variable (`'ElementPresetSelector' object has no attribute
+  'enumerators'`). Préfixer (`lightPreset`).
+- Types de déclaration vérifiés : `Oil.HsvColor()`, `Oil.Percentage(x)`, `Oil.PositiveMeters(x)`,
+  `Oil.Boolean(x)`, `Oil.PositiveInteger(x)`, `Oil.createObject("Angle")` ; `Oil.Angle` et
+  `Oil.Color` n'existent pas. Angles en radians (`.set(math.radians(d))`).
+- **Installer et lancer un Script depuis le pont** : `sourceCode.set(src)` + `parent.tools.append(t)`
+  compile bien (`dynamicVariables` remplies) mais n'exécute pas ; faire `t.execute.trig()` dans un
+  appel, puis lire `script.lastExecuteResult` / `numExecutions` dans l'appel **suivant** (l'exécution
+  a lieu après le retour du pont). Pour changer un paramètre : `t.dynamicVariables[i].set(v)` puis
+  `execute.trig()`. Un `print` du Script apparaît dans la sortie de l'appel qui a déclenché l'exécution.
 - Un `Real` refuse un `int` Python (`TypeError ... expected Real or float`) : toujours `float(...)`.
 - Un script peut aussi s'auto-câbler / se recolorer lui-même (`script.colorLabel`, `script.x.set(...)`).
 - **Les scripts partagent le même espace de noms global (R15, 06/10/2026).** Deux copies du même script
