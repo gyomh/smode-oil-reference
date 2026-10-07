@@ -694,6 +694,31 @@ pas seulement le script lui-même.
   `restartServer` (purge des fonctions absentes du source via `ast` + `script.script.sourceCode.get()`,
   puis redémarrage du serveur dans un thread — `shutdown()` bloquerait le thread principal).
 
+### Recharger un script / vider le cache Python — confirmé R15 (06/10/2026)
+
+- Smode R15 n'a **qu'un seul interpréteur Python embarqué** (`sys.prefix` = dossier `python` de Smode
+  Compose), ~170 modules chargés au démarrage (stdlib, `Smode`, `Smode.Oil`, `_cppSmode*`). Un module
+  utilisateur importé par un Script reste dans `sys.modules` : le modifier sur disque ne suffit pas, il
+  faut le purger (modules utilisateur seulement, en épargnant `__main__`, `Smode*`, `_cpp*`, stdlib et
+  site-packages) puis `importlib.invalidate_caches()`, et supprimer au besoin les `__pycache__`.
+  L'API Oil n'expose aucun cache de scripts (`PythonScript` : `sourceCode`, `lastCompileResult`,
+  `lastExecuteResult`, `numExecutions`, `verboseDebug`).
+- **Smode ne garde pas le chemin du fichier source d'un Script**, seulement le texte collé
+  (`sourceCode`). Pour recharger le code d'un Script depuis un `.py`, il faut apparier soi-même, par
+  exemple par le titre de la boîte d'en-tête du fichier ou par `label` == nom du fichier (un Script qui
+  renomme son label casse cet appariement), puis `tool.script.sourceCode.set(src)` (recompile).
+- Les Scripts se trouvent dans les **`.tools`** de la Scène, de la Compo (le `generator` d'un
+  `TextureLayer`) et des groupes, **pas dans `.layers`**. Dans un Script, `script` est le
+  `PythonScriptTool` et `script.script` l'objet interne qui porte `sourceCode`. Pour se reconnaître
+  soi-même parmi les tools : `tool is script` (`getUniqueIdentifier()` n'est pas convertible).
+- Ne pas recharger le Script du pont (`smode_bridge`, « At Every Update ») depuis un autre Script : il
+  faut le sauter explicitement.
+- **Piège d'écriture de fichier sous Windows** : `open(chemin, "w")` convertit `\n` en `\r\n` ; pour écrire
+  un `.py` sans altérer les fins de ligne, ouvrir en binaire ou avec `newline="\n"` (sinon
+  `sourceCode.get() == fichier` est faux, voir plus haut).
+- Exemple complet : projet `Smode_ClearCache`, script `ClearScriptCache_GYOMH.py` (options `NAME_FILTER`,
+  `CLEAR_PYCACHE`, `RELOAD`, `RELOAD_SCRIPTS`).
+
 ### Sous-processus et fils depuis un Script — confirmé R15 (01/10/2026)
 
 - **Ne jamais faire attendre le fil principal** un sous-processus qui interroge l'interface Smode
