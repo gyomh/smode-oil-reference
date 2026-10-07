@@ -25,6 +25,7 @@
 - [Vérifier visuellement (hors API)](#vérifier-visuellement-hors-api)
 - [Système de Parameters / Links / Cues](#système-de-parameters--links--cues)
 - [Timeline (TimelineCue)](#timeline-timelinecue)
+- [Modificateurs, générateurs et masques (aperçu)](#modificateurs-générateurs-et-masques-aperçu)
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Bugs UI connus](#bugs-ui-connus)
@@ -584,6 +585,38 @@ enums qui exigent `.set()`.
   (`open(path, 'a')`), jouer la timeline par script, puis analyser le fichier (les appels du pont ne sont
   pas synchrones avec les images).
 
+## Modificateurs, générateurs et masques (aperçu)
+
+Constats d'usage (R13-R15), classes vues en construisant des scripts :
+- **Effets de post-traitement d'une Compo** (`PixelateTextureModifier`, `FeedbackTextureModifier`...) :
+  s'ajoutent à `compo.modifiers` (niveau Compo), pas à `renderer.effects`. Un calque frère placé hors de la Compo
+  ne subit pas ces effets.
+- **Masque d'un dégradé** : une Compo interne contenant une forme sert de `TextureLayerTextureMask.generator`
+  sur un `MaskTextureModifier` appliqué à un `GradientTextureGenerator` ; dégradé multicolore via
+  `QuadritoneColorFunction` (4 couleurs + 2 positions intermédiaires).
+- **Forme point par point** : `PathShapeGenerator.path.points`, chaque `Path2dControlPoint` a
+  `position.x/.y`. Trois points à la même X (bas fixe / oscillant / bas fixe) donnent des barres à transitions
+  plates ; l'alternance fixe/oscillant donne des pics arrondis. Un point peut être la cible
+  (`ParameterLinkTarget.target.set(cp.position.y)`) d'un Link audio.
+- **Proportionnalité** : `ParameterLinkSource` + `MultiplyLinkModifier` (facteur par cible) relie un seul
+  `Parameter` à N cibles à des échelles différentes (voir aussi `FunctionLinkModifier` plus haut).
+- `TestPatternTextureGenerator` : chaque composant (`grid`, `horizontalBar`, `verticalBar`, `diagonals`,
+  `corners`, `cornerCircles`, `centeredCircles`, `edges`, `logo`, `coloredCheckerBoard`, `resolutionText`,
+  `tileLabels`, `labelText` ; `labelText` et `tileLabels` sont deux composants distincts) a son `.enabled`,
+  tous actifs par défaut selon le preset : pour n'en montrer qu'un, désactiver explicitement tous les autres.
+  Le générateur a aussi son propre `.background` (couleur avec alpha).
+- `UpscaleTextureModifier` (natif) : `algorithm` 0 = SimpleUpscale, 1 = SuperRes (2 et plus invalides),
+  `upscaleFactor`, `outputResolution`, `enhence` (netteté), `intensity`, `strong`, `withoutMaxine`. En
+  SimpleUpscale ce n'est **pas** de l'IA (ni Maxine) : un simple agrandissement plus un peu de netteté, coût
+  quasi nul en performance.
+- `StreamDiffusionTextureModifier` (paquet SmodeTech StreamDiffusion-R15) : `mode` et `acceleration`
+  (enum `StreamDiffusionAcceleration` : 0 = none, 1 = torchCompile, 2 = tensorRT) sont **verrouillés dans
+  l'UI** dès que le process est connecté, mais restent modifiables par `.set()` via script et déclenchent un
+  rechargement du pipeline (`isStreamRecreating = 1`). `modelName` accepte un identifiant Hugging Face absent
+  des presets (ex. `IDKiro/sdxs-512-0.9`). Un process Python crashé ne se relance pas (`execute.trig()`,
+  bascule d'`activation`, `resetEvent` : sans effet) : il faut supprimer et recréer le modificateur. Le
+  retrouver par **nom** (recherche récursive) car son index bouge quand d'autres modificateurs sont ajoutés.
+
 ## Audio réactif
 
 `AudioSpectrumLinkSource` — classe native pour injecter en continu l'intensité d'une bande de
@@ -595,6 +628,17 @@ fréquence dans n'importe quel paramètre via un Link.
   (ex. "Left"/"Right" en DirectSound, 8 canaux nommés en ASIO Voicemeeter).
 
 ## Scripts créés par programmation (PythonScriptTool)
+
+**Moteur de script.** Python embarqué = CPython 3.12 complet (`python312.dll` + dossier `python\`, stdlib
+entière : `http.server`, `socketserver`, `threading`, `json`), en R13 comme en R15, un seul interpréteur.
+C'est la **seule famille de script** (aucun Lua ni JavaScript : l'analyse de `Plugins/*.dll` ne montre que
+`Python.dll`, `PythonScriptTool`, `PythonEngineComponent`, `PythonFileScriptToolConverter` ; les autres
+plugins « code » sont des intégrations tierces comme Notch, Substance, TouchDesigner). Conséquence : un
+vérificateur de syntaxe externe en Python 3.11 rejette des f-strings imbriquées que Smode accepte (3.12).
+`Oil` est déjà injecté dans le contexte d'un Script : `import Oil` est inutile. `site-packages/Smode/`
+(`Oil.py`, `SmodeSDK.py`, `Sys.py`) enveloppe des extensions compilées dans `Smode.exe` : pas d'`import
+Smode` depuis un interpréteur externe. La doc officielle (doc.smode.io, section Python scripting) précise que
+l'API n'est pas publiée.
 
 Confirmé fiable :
 ```python
@@ -753,6 +797,27 @@ impossible de savoir de quelle scène/compo elle vient — sélectionner le laye
 `TreeWalker.RawViewWalker` (`GetNextSibling`/`GetPreviousSibling`) pour trouver le `Text` (≈1 s au lieu
 de 4 s). `Add-Type -AssemblyName WindowsBase` requis pour `System.Windows.Point`.
 
+Autres constats (R15, 30/09/2026) :
+- **Le panneau verrouillé (épingle) n'affiche pas l'élément sélectionné** : lire un onglet verrouillé donne
+  un succès trompeur. Tous les panneaux non verrouillés affichent la même sélection ; un seul onglet est lu à
+  la fois (le contenu des onglets inactifs est absent de l'arbre UIA).
+- Détection du verrou par les pixels de l'icône : abandonnée. Elle marchait sur l'écran principal mais, sur un
+  écran secondaire (1920x1080, 100 %, fenêtre non plein écran, coordonnées négatives), les `BoundingRectangle`
+  des enfants sont décalés d'environ 950 px en X (Y et bord gauche corrects) ; même avec
+  `PerMonitorV2` le décalage reste (probable défaut JUCE multi-écrans / DPI). Ne pas se fier aux
+  coordonnées UIA pour capturer l'écran.
+- Le titre du panneau Paramètres est un `Text` de proportion largeur/hauteur ≈ 6,82 (300x44 ou 150x22), sans
+  `:` final et sans `ComboBox` sur la même ligne : ce filtre écarte les valeurs numériques, le titre du
+  Viewport et le panneau « Remaining: ».
+- **Bouton Execute de la LIGNE d'un Script dans l'arbre Éléments : ne change pas la sélection** ; seul le
+  bouton Execute du panneau Paramètres du Script oblige à sélectionner le Script (la sélection devient alors le
+  Script lui-même).
+- Lancé depuis Smode (processus GUI sans console), un `subprocess` doit recevoir `stdin=subprocess.DEVNULL`
+  (avec `stdout=PIPE`, `stderr=PIPE`, `creationflags=0x08000000` pour masquer la fenêtre), sinon
+  `OSError(9, 'The handle is invalid')` après un redémarrage de Smode (non reproductible via le pont, dont les
+  handles sont valides). Sortie en UTF-8 côté PowerShell (`[Console]::OutputEncoding`) et décodage
+  `utf-8-sig` côté Python pour les noms accentués.
+
 ### Scripts qui s'auto-installent (rig IK) — confirmé R15 (07/10/2026)
 
 - **Se déplacer soi-même** : `copie = script.clone()` (copie source + variables), `groupe.tools.append(copie)`,
@@ -829,6 +894,15 @@ de Smode (l'exécuter directement dans le thread HTTP cause un deadlock total, c
 `netstat -ano`, connexions bloquées en `CLOSE_WAIT`). `_EXEC_NAMESPACE = globals()` partagé
 entre tous les appels → comportement type REPL persistant, les variables restent disponibles
 d'un appel à l'autre.
+
+**Sécurité d'un serveur HTTP lancé depuis un Script** (constaté en écrivant `smode-server-http`) : écouter
+sur `127.0.0.1` ne suffit pas. Un navigateur ajoute l'en-tête `Origin` à toute requête inter-sites, **même vers
+127.0.0.1** : un site visité peut envoyer un `POST` `application/x-www-form-urlencoded` (le format du module
+HTTP de Chataigne) qui exécute du code dans Smode (CSRF). Pour tout endpoint qui exécute du code : refuser
+les requêtes portant un `Origin` ou un `Host` hors liste (DNS rebinding), sauf jeton valide ; n'activer le CORS
+que sur les endpoints sans exécution. Utiliser un `ThreadingHTTPServer` pour qu'une requête lente ne bloque pas
+les autres. **Ne pas lire de paramètres Oil (`script.host`, `script.port`) depuis un fil secondaire** : les lire
+dans le fil principal et les passer en argument au fil.
 
 ---
 
