@@ -446,8 +446,8 @@ plutôt que corriger les objets existants en place.
   `label`, `value`, `expose`, `modifiers` et **`targets` : `OwnedVector(LinkTarget)`** — pas besoin de
   `LinkBank` : `lt = Oil.createObject('ParameterLinkTarget'); lt.target.set(script.maVariable);
   p.targets.append(lt); bank.parameters.append(p)`. Valeur initiale du Parameter = valeur courante de la
-  variable. Le Parameter prend la couleur de son bank (`colorLabel`). Le lien est à sens unique
-  (bank → script) : un paramètre que le script remet lui-même à zéro (bouton) reste coché dans le bank.
+  variable. Le Parameter prend la couleur de son bank (`colorLabel`). Voir aussi la section « Scripts qui
+  s'auto-installent » : le Parameter lié repose sa propre valeur sur le script.
 - Le `colorLabel` de tout élément : `c = o.colorLabel; c.red.set(r/255)` (valeurs 0-1, `SrgbColor`).
 
 ## Vérifier visuellement (hors API)
@@ -456,6 +456,7 @@ Le rendu ne se lit pas par script. Technique qui marche : PowerShell, `GetWindow
 Smode + `Graphics.CopyFromScreen` sur ce rectangle seul (jamais l'écran entier), puis lecture du PNG.
 Recadrer sur le viewport pour lire une icône ; la barre d'état en bas de la fenêtre donne les erreurs
 de rendu (« No direct pointer », « Unspecified reference », « No Triangles... »).
+Attention : si la fenêtre Smode est sur un autre écran avec d'autres fenêtres par-dessus, la capture les inclura.
 
 ## Scene imbriquée (nested Scene layer)
 
@@ -497,6 +498,7 @@ script.project.masterScene.layers.append(scene)   # dernier append
 `label` (sur `Scene`/`TextureLayer`, wrappé en `_cppSmodeOil.String`) accepte l'assignation directe
 `obj.label = "texte"` aussi bien que `.set()`/`.get()` — les deux fonctionnent, contrairement aux
 enums qui exigent `.set()`.
+(Script prêt à l'emploi : [smode-new-scene](https://github.com/gyomh/smode-new-scene).)
 
 ## Système de Parameters / Links / Cues
 
@@ -617,7 +619,8 @@ Constats d'usage (R13-R15), classes vues en construisant des scripts :
   rechargement du pipeline (`isStreamRecreating = 1`). `modelName` accepte un identifiant Hugging Face absent
   des presets (ex. `IDKiro/sdxs-512-0.9`). Un process Python crashé ne se relance pas (`execute.trig()`,
   bascule d'`activation`, `resetEvent` : sans effet) : il faut supprimer et recréer le modificateur. Le
-  retrouver par **nom** (recherche récursive) car son index bouge quand d'autres modificateurs sont ajoutés.
+  retrouver par **nom** (recherche récursive) car son index bouge quand d'autres modificateurs sont ajoutés. Script prêt à l'emploi :
+  [smode-streamdiff-ctrl](https://github.com/gyomh/smode-streamdiff-ctrl).
 
 ## Audio réactif
 
@@ -628,6 +631,8 @@ fréquence dans n'importe quel paramètre via un Link.
   `.begin`/`.end`/`.center`/`.size`).
 - Devices audio : `engine.devices.devices`, chaque `JuceAudioDevice` a `.inputChannels`
   (ex. "Left"/"Right" en DirectSound, 8 canaux nommés en ASIO Voicemeeter).
+  Exemples : [smode-vizualiser](https://github.com/gyomh/smode-vizualiser),
+  [smode-oscilloscope](https://github.com/gyomh/smode-oscilloscope).
 
 ## Scripts créés par programmation (PythonScriptTool)
 
@@ -790,7 +795,7 @@ pas seulement le script lui-même.
 ### Lire la sélection de l'UI (UI Automation, hors Oil)
 
 Oil n'expose aucune sélection (rien dans `engine`, `project`, scènes, timelines). Voir le projet
-`smode-selection-reader` : lecture du titre du panneau Paramètres. Limites : un seul panneau
+[smode-selection-reader](https://github.com/gyomh/smode-selection-reader) : lecture du titre du panneau Paramètres. Limites : un seul panneau
 Paramètres non verrouillé ; l'arbre UIA est plat (≈780 enfants sous la fenêtre, ≈1500 éléments
 `Custom` sans nom) donc **le nom d'une timeline sélectionnée est toujours « Main Timeline »**,
 impossible de savoir de quelle scène/compo elle vient — sélectionner le layer de la scène/compo.
@@ -830,7 +835,8 @@ Autres constats (R15, 30/09/2026) :
   ordre 0 = Rz·Ry·Rx, radians), `translation`, `scale`, `intensity`, `masks`. Sans masque : poids 1 partout.
 - `LinearGeometryMask.segment.begin / end` (`Segment3d`) : poids 0 au début, 1 à la fin et au-delà (rampe bornée) → zone de
   transition d'un pli. Plusieurs modifiers enchaînés (pivot = articulation courante, rotation relative au bone précédent,
-  masque sur le bone déformé) donnent un skinning linéaire en chaîne FK.
+  masque sur le bone déformé) donnent un skinning linéaire en chaîne FK. Exemple complet : [smode-ik-rig](https://github.com/gyomh/smode-ik-rig)
+  (IK Deform).
 - **Subdiviser l'axe** sinon rien à plier : `CapsuleGeometryGenerator.heightPrecision` (1 par défaut) ; `Precision2d` /
   `Precision3d` (`x`, `y`, `z`, case `uniform` à décocher d'abord, sinon tout change ensemble) ; `precision` scalaire pour
   Rectangle / Circle / Star.
@@ -915,7 +921,7 @@ de Smode (l'exécuter directement dans le thread HTTP cause un deadlock total, c
 entre tous les appels → comportement type REPL persistant, les variables restent disponibles
 d'un appel à l'autre.
 
-**Sécurité d'un serveur HTTP lancé depuis un Script** (constaté en écrivant `smode-server-http`) : écouter
+**Sécurité d'un serveur HTTP lancé depuis un Script** (constaté en écrivant [smode-server-http](https://github.com/gyomh/smode-server-http)) : écouter
 sur `127.0.0.1` ne suffit pas. Un navigateur ajoute l'en-tête `Origin` à toute requête inter-sites, **même vers
 127.0.0.1** : un site visité peut envoyer un `POST` `application/x-www-form-urlencoded` (le format du module
 HTTP de Chataigne) qui exécute du code dans Smode (CSRF). Pour tout endpoint qui exécute du code : refuser
