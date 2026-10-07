@@ -818,6 +818,24 @@ Autres constats (R15, 30/09/2026) :
   handles sont valides). Sortie en UTF-8 côté PowerShell (`[Console]::OutputEncoding`) et décodage
   `utf-8-sig` côté Python pour les noms accentués.
 
+### Déformer une géométrie par rig (Transform3d + masques) — confirmé R15 (07/10/2026)
+
+- `GeometryLayer.generator.modifiers` (`OwnedVector`) reçoit des `…GeometryModifier` : trouvés par essai de
+  `Oil.createObject` : `Transform3dGeometryModifier`, `ScaleGeometryModifier`, `DisplaceGeometryModifier` (pas de Bend /
+  Twist / Skin natifs). Masques (`modifier.masks`) : `LinearGeometryMask`, `SphereGeometryMask`, `BoxGeometryMask`,
+  `CylinderGeometryMask`, `NoiseGeometryMask`, `RandomGeometryMask`, `FunctionGeometryMask`.
+- `Transform3dGeometryModifier` : `anchor` (x/y/z en mètres, repère local de la géométrie), `rotation` (`EulerAngles`,
+  ordre 0 = Rz·Ry·Rx, radians), `translation`, `scale`, `intensity`, `masks`. Sans masque : poids 1 partout.
+- `LinearGeometryMask.segment.begin / end` (`Segment3d`) : poids 0 au début, 1 à la fin et au-delà (rampe bornée) → zone de
+  transition d'un pli. Plusieurs modifiers enchaînés (pivot = articulation courante, rotation relative au bone précédent,
+  masque sur le bone déformé) donnent un skinning linéaire en chaîne FK.
+- **Subdiviser l'axe** sinon rien à plier : `CapsuleGeometryGenerator.heightPrecision` (1 par défaut) ; `Precision2d` /
+  `Precision3d` (`x`, `y`, `z`, case `uniform` à décocher d'abord, sinon tout change ensemble) ; `precision` scalaire pour
+  Rectangle / Circle / Star.
+- Générateurs de géométrie existants (`createObject`) : Capsule, Box, Plane, Sphere, Cylinder, Torus, Circle, Helix, Star,
+  Text, Particles, Rectangle. Capsule : l'origine du calque est l'extrémité basse. Les positions de sommets ne sont pas
+  lisibles en Python (`generator.positions` opaque) : vérifier par capture de la fenêtre Smode.
+
 ### Scripts qui s'auto-installent (rig IK) — confirmé R15 (07/10/2026)
 
 - **Se déplacer soi-même** : `copie = script.clone()` (copie source + variables), `groupe.tools.append(copie)`,
