@@ -924,6 +924,17 @@ dans le fil principal et les passer en argument au fil.
 
 ---
 
+## Projets liés
+
+Scripts et outils Smode construits avec cette référence (tous sous [github.com/gyomh](https://github.com/gyomh)) :
+[smode-mcp](https://github.com/gyomh/smode-mcp) (pont MCP), [smode-server-http](https://github.com/gyomh/smode-server-http),
+[smode-selection-reader](https://github.com/gyomh/smode-selection-reader), [smode-ik-rig](https://github.com/gyomh/smode-ik-rig)
+(IK Rig + IK Deform), [smode-clear-script-cache](https://github.com/gyomh/smode-clear-script-cache),
+[smode-vizualiser](https://github.com/gyomh/smode-vizualiser), [smode-oscilloscope](https://github.com/gyomh/smode-oscilloscope),
+[smode-trace-writer](https://github.com/gyomh/smode-trace-writer), [smode-light-setup](https://github.com/gyomh/smode-light-setup),
+[smode-orbit-camera](https://github.com/gyomh/smode-orbit-camera), [smode-new-scene](https://github.com/gyomh/smode-new-scene),
+[smode-streamdiff-ctrl](https://github.com/gyomh/smode-streamdiff-ctrl).
+
 ## Contributing
 
 Cette référence est construite par l'usage réel, pas par lecture de doc officielle (qui
