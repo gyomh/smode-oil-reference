@@ -33,6 +33,7 @@
 - [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
 - [Références de fichiers, Media Directories et relink](#références-de-fichiers-media-directories-et-relink-r15-08102026)
 - [Interface web servie par un Script](#interface-web-servie-par-un-script-r15-08102026)
+- [Widget Tool (R15, 09/10/2026)](#widget-tool-r15-09102026)
 - [Bugs UI connus](#bugs-ui-connus)
 - [Instabilités observées](#instabilités-observées)
 - [Le pont MCP (rappel)](#le-pont-mcp-rappel)
@@ -724,6 +725,11 @@ une variable détruit l'ancien paramètre (nouvel objet, valeur par défaut).
           if c is comp: return d          # le même élément Smode donne toujours le même objet Python
       d = {}; reg.append((comp, d)); return d
   ```
+- **Les globals partagées incluent aussi le pont MCP (09/10/2026)** : un Script Manual déclenché
+  depuis le pont (`tool.execute.trig()`) s'est exécuté de façon synchrone dans l'appel du pont, et sa
+  variable de boucle `t` (niveau module) a écrasé le `t` du pont (-> `'WidgetTool' object has no
+  attribute 'launchMode'`). Mettre tout le corps d'un script dans une fonction
+  (`def _monscript_main(): ...`, puis l'appeler) : rien ne fuit à part ce nom de fonction.
 - **Un Script peut vivre dans un `Group3dLayer`** (`group.tools.append(tool)`) : `script.parentElement` est
   alors le groupe (`.layers`, `.tools`, `.placement`, `.worldMatrix`), pas la Compo. Chaîne de parents
   vérifiée : script → `Group3dLayer` → (groupes imbriqués…) → `Compo` → `TextureLayer` → `Scene` → `Project`
@@ -993,6 +999,68 @@ une vraie interface graphique pour un Script, sans rien installer.
 - **Vérifier l'interface sans toucher la fenêtre de l'utilisateur** : `msedge --headless=new
   --user-data-dir=<dossier temporaire> --lang=fr --window-size=1400,900 --virtual-time-budget=8000
   --screenshot=capture.png http://127.0.0.1:<port>/` (`--lang` fixe `navigator.language`).
+
+## Widget Tool (R15, 09/10/2026)
+
+Surface de contrôle personnalisée (élément Tool, SMODE 10+), construite dans le **Widget Editor**
+(mode EDIT, glisser-déposer). La doc publique fait 5 lignes ; tout ce qui suit a été trouvé en live.
+
+**Structure (seulement 2 classes de widget concrètes, confirmé dans `api-Smode.dll`) :**
+```
+WidgetTool (dans .tools d'une scène/compo ; a aussi runOnServer)
+└─ groupDefinition : GroupWidgetDefinition   target (= le WidgetTool lui-même), bounds, caption
+   └─ definitions : OwnedVector(WidgetDefinition)   # WidgetDefinition = abstraite
+        ParameterWidgetDefinition   target  : ObjectWeakPointer (élément OU variable)
+                                    bounds  : PixelRectangle (position.x/y, size.width/height), pixels absolus
+                                    caption : String  -> stockée mais NON affichée (voir plus bas)
+```
+- **Viser la VALEUR, pas l'élément.** `d.target.set(param.value)` / `state.apply` /
+  `bank.applyNext` / `layer.opacity`. Déposer un élément (`ParametersState`, `ParameterBank`) donne
+  une case vide avec une icône. Déposer un élément `Parameter` marche (titre = son label) mais
+  n'affiche pas l'état « piloté ».
+- `str(d.target)` affiche `''` tant que la définition n'est pas dans le document — pas une erreur :
+  `d.target.get()` renvoie la variable ; après l'append, affiche `@space/<uuid>/value`.
+- **Titre affiché = nom de la cible** : label de l'élément (`Opacity (reel)`) ou nom de la variable
+  (`Value`, `Apply`, `Apply Next`). `caption` est ignorée pour les widgets de paramètre, et **pas de
+  renommage** dans l'UI (clic droit en mode EDIT = Delete seulement ; « Change Caption » existe dans
+  `Designer.dll` mais n'est pas accessible). Contournement : un widget visant l'élément `Parameter`,
+  haut de 24 px, posé sur la barre de titre du widget de valeur, comme étiquette.
+- **Aspect du widget = type + forme du cadre**, pas de choix de style : Percentage dans un cadre
+  haut = fader vertical, cadre carré = potard ; HsvColor = roue chromatique ; Trigger = bouton. Un
+  Percentage piloté par un Link a un **cadre vert** et est en lecture seule. `UnboundedPercentage`
+  (ex. `scaleFactor.width`) n'a pas de max → champ numérique, jamais de fader (passer par un
+  `Parameter(Percentage)` borné de banque).
+- **Ordre Z = ordre de `definitions` : le dernier est dessiné au-dessus.** Réordonner en
+  reconstruisant : créer des copies (target, bounds, caption) avec `defs.append` /
+  `defs.insert(i, obj)`, puis `defs.removeAt(ancien)`. Script prêt : `Widget_ZOrder_GYOMH.py`
+  (premier plan / arrière-plan / monter / descendre + tri auto par surface).
+- **Un `GroupWidgetDefinition` imbriqué n'est pas rendu** (cadre vide, sans légende, enfants cachés).
+- Limites : pas de défilement/zoom dans le canvas (ce qui sort de la fenêtre est inaccessible),
+  mise en page absolue, pas d'accès distant/web (l'API HTTP de `NetworkPlugin.dll`, `/api/live/...`,
+  ne sert pas les widgets). Atout : le panneau est enregistré dans le projet/la compo et survit aux
+  renommages.
+- Exemple officiel : `packs/Features/Misc/WidgetTool.compo` = un WidgetTool affichant les macros
+  d'une `ParameterBank` (FADER 01...), chacune pilotant plusieurs cibles via `ParameterLinkTarget` +
+  courbes `FunctionLinkModifier`/`KeyframeFunction`. Le widget n'est qu'une vue de la banque.
+
+**Transitions entre états de banque** : pas de durée sur le State — ajouter un modifier **Dynamic**
+dans `ParameterLinkTarget.modifiers` du paramètre de banque (ou `Parameter.modifiers`) :
+`SmoothLinkModifier` (`positiveSpeed`/`negativeSpeed`), `InertiaLinkModifier` (`maxSpeed`,
+`acceleration`), `BounceLinkModifier` (`speed`, `adaptationSpeed`), aussi `Extrapolate`,
+`Derivative`, `InterpretSpeed` ; commun : `bypassModifierAboveDelta`. `DynamicLinkModifier` est
+abstraite. Le fader de la banque saute ; seule la cible glisse.
+
+**Fader « monitor » de la valeur réelle (lissée)** : un `Parameter(Percentage)` dans une banque
+séparée (les states ne le capturent pas) + un `Link` dans une `LinkBank` :
+`source = ParameterLinkSource` (`target.set(vraieVar)`), `targets.append(ParameterLinkTarget)` avec
+`target.set(monitor.value)`. Marche par script. Un Link ne transmet que les **changements** de sa
+source (`numChanges`) : le monitor garde son ancienne valeur tant que la source n'a pas bougé une
+fois. Piège : un layer a sa propre `opacity` ET son générateur en a une autre (même nom dans l'arbre).
+- `ParametersState` : `apply` (Trigger), `values` = `Map(WeakPointer(Parameter), Object)`.
+  `ParameterBank` : `states`, `currentStateIndex`, `currentState`, `applyPrevious`, `applyNext`,
+  `applyRandom`, `saveAsNew`, `recording`, `loop`.
+- Propriétaire d'une variable : `var.isChildOf(element)` marche (un élément est enfant de lui-même)
+  — utilisé pour nommer les widgets « Paramètre > Value ».
 
 ## Bugs UI connus
 

@@ -34,6 +34,7 @@
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
 - [File references, Media Directories and relink](#file-references-media-directories-and-relink-r15-08102026)
 - [Web interface served by a Script](#web-interface-served-by-a-script-r15-08102026)
+- [Widget Tool (R15, 09/10/2026)](#widget-tool-r15-09102026)
 - [Known UI bugs](#known-ui-bugs)
 - [Observed instabilities](#observed-instabilities)
 - [The MCP bridge (reminder)](#the-mcp-bridge-reminder)
@@ -740,6 +741,11 @@ change; renaming a variable destroys the old parameter (new object, default valu
           if c is comp: return d          # the same Smode element always gives the same Python object
       d = {}; reg.append((comp, d)); return d
   ```
+- **Shared globals also include the MCP bridge (09/10/2026)**: a Manual Script triggered from the
+  bridge (`tool.execute.trig()`) ran synchronously inside the bridge call, and its module-level loop
+  variable `t` overwrote the bridge's own `t` (-> `'WidgetTool' object has no attribute 'launchMode'`).
+  Put the whole body of a script in one function (`def _myscript_main(): ...`, then call it): nothing
+  leaks except that function name.
 - **A Script can live in a `Group3dLayer`** (`group.tools.append(tool)`): `script.parentElement`
   is then the group (`.layers`, `.tools`, `.placement`, `.worldMatrix`), not the Compo. Parent
   chain verified: script → `Group3dLayer` → (nested groups…) → `Compo` → `TextureLayer` → `Scene` →
@@ -1019,6 +1025,66 @@ a real graphical interface for a Script, with nothing to install.
 - **Check the interface without touching the user's window**: `msedge --headless=new
   --user-data-dir=<temporary folder> --lang=en --window-size=1400,900 --virtual-time-budget=8000
   --screenshot=capture.png http://127.0.0.1:<port>/` (`--lang` sets `navigator.language`).
+
+## Widget Tool (R15, 09/10/2026)
+
+Custom control surface (Tool element, SMODE 10+), built in the **Widget Editor** (EDIT mode,
+drag & drop). Public docs are 5 lines long; everything below was found live.
+
+**Structure (only 2 concrete widget classes exist, confirmed in `api-Smode.dll`):**
+```
+WidgetTool (in scene/compo .tools; also has runOnServer)
+└─ groupDefinition : GroupWidgetDefinition   target (= the WidgetTool itself), bounds, caption
+   └─ definitions : OwnedVector(WidgetDefinition)   # WidgetDefinition = abstract
+        ParameterWidgetDefinition   target  : ObjectWeakPointer (element OR variable)
+                                    bounds  : PixelRectangle (position.x/y, size.width/height), absolute pixels
+                                    caption : String  -> stored but NOT displayed (see below)
+```
+- **Point at the VALUE, not the element.** `d.target.set(param.value)` / `state.apply` /
+  `bank.applyNext` / `layer.opacity`. Dropping an element (a `ParametersState`, a `ParameterBank`)
+  gives an empty box with an icon. Dropping a `Parameter` element works (shows its label as title)
+  but does not show the "driven" state.
+- `str(d.target)` prints `''` while the definition is not in the document — not an error:
+  `d.target.get()` returns the variable; after the append it prints `@space/<uuid>/value`.
+- **Title displayed = name of the target**: element label (`Opacity (reel)`) or variable name
+  (`Value`, `Apply`, `Apply Next`). `caption` is ignored for parameter widgets, and there is **no
+  rename** in the UI (right click in EDIT mode = Delete only; "Change Caption" exists in
+  `Designer.dll` but is not reachable). Workaround: a widget pointing at the `Parameter` element,
+  24 px high, placed over the value widget's title bar, as a label.
+- **Widget look = type + box shape**, no style choice: Percentage in a tall box = vertical fader,
+  in a square box = knob; HsvColor = colour wheel; Trigger = button. A Percentage driven by a Link
+  gets a **green frame** and is read-only. `UnboundedPercentage` (e.g. `scaleFactor.width`) has no
+  max → numeric field, never a fader (go through a bounded bank `Parameter(Percentage)`).
+- **Z order = order of `definitions`: the last one is drawn on top.** Reorder by rebuilding: create
+  copies (target, bounds, caption) with `defs.append` / `defs.insert(i, obj)`, then
+  `defs.removeAt(old)`. Ready-made script: `Widget_ZOrder_GYOMH.py` (front/back/up/down + auto sort
+  by area).
+- **A nested `GroupWidgetDefinition` is not rendered** (empty frame, no caption, children hidden).
+- Limits: no scrolling/zoom in the canvas (anything out of the window is unreachable), absolute
+  layout, no remote/web access (the HTTP API of `NetworkPlugin.dll`, `/api/live/...`, does not
+  serve widgets). Strength: the panel is saved in the project/compo and survives renames.
+- Official example: `packs/Features/Misc/WidgetTool.compo` = a WidgetTool showing the macros of a
+  `ParameterBank` (FADER 01...), each driving several targets through `ParameterLinkTarget` +
+  `FunctionLinkModifier`/`KeyframeFunction` curves. The widget is only a view of the bank.
+
+**Transitions between bank states**: no duration on the State — add a **Dynamic** modifier to the
+bank parameter's `ParameterLinkTarget.modifiers` (or `Parameter.modifiers`): `SmoothLinkModifier`
+(`positiveSpeed`/`negativeSpeed`), `InertiaLinkModifier` (`maxSpeed`, `acceleration`),
+`BounceLinkModifier` (`speed`, `adaptationSpeed`), also `Extrapolate`, `Derivative`,
+`InterpretSpeed`; common: `bypassModifierAboveDelta`. `DynamicLinkModifier` itself is abstract.
+The bank fader jumps; only the target glides.
+
+**"Monitor" fader of the real (smoothed) value**: a `Parameter(Percentage)` in a separate bank
+(states do not capture it) + a `Link` in a `LinkBank`: `source = ParameterLinkSource`
+(`target.set(realVar)`), `targets.append(ParameterLinkTarget)` with `target.set(monitor.value)`.
+Works by script. A Link only transmits **changes** of its source (`numChanges`): the monitor keeps
+its old value until the source moves once. Trap: a layer has its own `opacity` AND its generator
+has another `opacity` (same name in the tree).
+- `ParametersState`: `apply` (Trigger), `values` = `Map(WeakPointer(Parameter), Object)`.
+  `ParameterBank`: `states`, `currentStateIndex`, `currentState`, `applyPrevious`, `applyNext`,
+  `applyRandom`, `saveAsNew`, `recording`, `loop`.
+- Owner of a variable: `var.isChildOf(element)` works (an element is a child of itself) — used to
+  name widgets "Parameter > Value".
 
 ## Known UI bugs
 
