@@ -187,6 +187,16 @@ l'attribut s'appelle `enumerators` (`OwnedVector(CustomEnumerator)`) ; les ancie
 name`). `.set()/.get()` utilisent le label (string), contrairement aux enums natifs qui utilisent
 un entier. Alternative plus simple si un simple booléen suffit : `Oil.Boolean` évite tout ce bug.
 
+**Liste remplie dès la compilation (R15, 08/10/2026)** : la déclaration accepte une expression quelconque ;
+une lambda qui crée, remplit et pré-sélectionne l'énumération évite la liste vide jusqu'au premier Execute
+(testé : compilation neuve et recompilation par-dessus une ancienne déclaration vide) :
+```python
+mode: (lambda e: ([e.enumerators.append((lambda n: (setattr(n, "label", lab), setattr(n, "value", i), n)[2])(
+    Oil.createObject("CustomEnumerator"))) for i, lab in enumerate(("Relocate", "Consolidate"))],
+    e.set("Relocate"), e)[2])(Oil.createObject("CustomEnumeration"))
+```
+(à écrire sur une seule ligne dans le Script).
+
 Enum `Placement3dTargetAxis` (`placement.target.axis`, lisible via `.toString()`) : 0 = xPos,
 1 = xNeg, 2 = zPos (défaut), 3 = zNeg ; 4 et 5 ne sont pas valides (valeurs testées sur un objet
 jetable non ajouté à la scène).
@@ -677,6 +687,10 @@ une variable détruit l'ancien paramètre (nouvel objet, valeur par défaut).
   `Oil.createObject("Angle")`, `Oil.createObject("WeakPointer(Layer)")`,
   `Oil.createObject("OwnedVector(WeakPointer(Layer))")` (liste de slots dont le script règle la
   taille lui-même avec `append` / `removeAt`, ex. selon un entier « nombre de bones »).
+- **Noms en MAJUSCULES conservés tels quels** (`RELOCATE` → « RELOCATE », `SECTION_RELOCATE` → inchangé,
+  `x_RELOCATE` → « X_RELOCATE »). Astuce pour structurer le panneau : des faux paramètres
+  `RELOCATE: Oil.String("--------")` servent de titres de section (remettre la valeur à chaque exécution si
+  l'utilisateur la modifie : `setattr(script, "RELOCATE", "-" * 40)`).
 - **Les déclarations de paramètres doivent précéder tout autre statement, `import` compris**
   (`ScriptStatementOrderException: Parameter declarations should be placed before any other
   statement`) : mettre `import math` etc. après le bloc de déclarations.
@@ -921,6 +935,22 @@ Vérifié en relinkant un projet de 136 médias (vidéos ProRes + PNG) après ra
   `Real`...). ~62 000 objets parcourus en quelques secondes sur un projet de spectacle.
 - Une variable posée sur `script` depuis le pont n'est pas acceptée (`AttributeError` sur `_cppSmodeSDK.Element`) :
   pour garder des objets d'un appel à l'autre, utiliser `builtins`.
+- **Liste des Media Directories** : `%APPDATA%\Smode Compose\configurations\Data_<version>.configuration`
+  (ex. `Data_15_8`), blocs `{name = "...", directory = "C:\\...", readOnly = true}` (échappements `\\`). Smode
+  l'écrit **avec quelques secondes de retard** après un ajout dans l'UI : un script qui la lit juste après peut
+  ne pas voir le nouveau dossier. Pas d'accès direct trouvé via `Oil` (seulement `Oil.getObject(space, uuid)`).
+- **Chemin absolu accepté** : `ref.path.set(r"G:\dossier\fichier.wav")` résout le fichier hors de tout Media
+  Directory ; Smode le réécrit avec des `/` et le **conserve après fermeture / réouverture** (non portable).
+- **Autres types de `FileReference`** : `FileReference(AudioFileContent)` (→ `AudioFile`),
+  `FileReference(Group3dLayer)` (FBX importé, une par calque du groupe → `Scene3dFile`),
+  `FileReference(GeometryLayerUser)` (path vide, à ignorer).
+- **Fichier fraîchement copié sur le disque** : juste après `shutil.copy2` + `ref.path.set(...)`, la
+  référence reste souvent `MissingFile` (indexation différée). Appeler `ref.reload.trig()` et revérifier dans
+  un appel / une exécution **suivante** ; 2-3 passages peuvent être nécessaires.
+- **Scene d'une référence** : les Scenes de premier niveau sont les calques de classe `Scene` dans
+  `masterScene.layers` (la `masterScene` n'a pas de label) ; à repérer pendant le parcours de l'arbre.
+- `getUniqueIdentifier()` d'un `PythonScriptTool` lève `TypeError ... juce::Uuid` : entourer d'un try (le
+  parcours générique le fait déjà) ; pour retrouver un tool, comparer plutôt `script.sourceCode`.
 
 ## Bugs UI connus
 

@@ -188,6 +188,16 @@ the attribute is called `enumerators` (`OwnedVector(CustomEnumerator)`); the old
 name`). `.set()/.get()` use the label (string), unlike native enums which use an integer.
 Simpler alternative if a plain boolean is enough: `Oil.Boolean` avoids this whole bug.
 
+**List filled at compile time (R15, 08/10/2026)**: the declaration accepts any expression; a lambda that
+creates, fills and preselects the enumeration avoids the empty list until the first Execute (tested: fresh
+compile and recompile over an old empty declaration):
+```python
+mode: (lambda e: ([e.enumerators.append((lambda n: (setattr(n, "label", lab), setattr(n, "value", i), n)[2])(
+    Oil.createObject("CustomEnumerator"))) for i, lab in enumerate(("Relocate", "Consolidate"))],
+    e.set("Relocate"), e)[2])(Oil.createObject("CustomEnumeration"))
+```
+(write it on a single line in the Script).
+
 `Placement3dTargetAxis` enum (`placement.target.axis`, readable through `.toString()`): 0 = xPos,
 1 = xNeg, 2 = zPos (default), 3 = zNeg; 4 and 5 are not valid (values tested on a throwaway
 object not added to the scene).
@@ -693,6 +703,9 @@ change; renaming a variable destroys the old parameter (new object, default valu
   `Oil.String`, `Oil.createObject("Angle")`, `Oil.createObject("WeakPointer(Layer)")`,
   `Oil.createObject("OwnedVector(WeakPointer(Layer))")` (list of slots whose size the script sets
   itself with `append` / `removeAt`, e.g. from an integer "number of bones").
+- **ALL-CAPS names are kept as is** (`RELOCATE` → "RELOCATE", `SECTION_RELOCATE` unchanged, `x_RELOCATE` →
+  "X_RELOCATE"). Trick to structure the panel: dummy parameters `RELOCATE: Oil.String("--------")` act as section
+  titles (reset the value on each run in case the user edits it: `setattr(script, "RELOCATE", "-" * 40)`).
 - **Parameter declarations must precede any other statement, `import` included**
   (`ScriptStatementOrderException: Parameter declarations should be placed before any other
   statement`): put `import math` etc. after the declaration block.
@@ -950,6 +963,22 @@ Verified by relinking a project with 136 media files (ProRes videos + PNGs) afte
   show project.
 - Setting an attribute on `script` from the bridge is refused (`AttributeError` on `_cppSmodeSDK.Element`): to keep
   objects between calls, use `builtins`.
+- **Media Directories list**: `%APPDATA%\Smode Compose\configurations\Data_<version>.configuration`
+  (e.g. `Data_15_8`), blocks `{name = "...", directory = "C:\\...", readOnly = true}` (`\\` escapes). Smode
+  writes it **a few seconds late** after adding one in the UI: a script reading it right away may miss the new
+  folder. No direct `Oil` access found (only `Oil.getObject(space, uuid)`).
+- **Absolute path accepted**: `ref.path.set(r"G:\folder\file.wav")` resolves a file outside any Media Directory;
+  Smode rewrites it with `/` and **keeps it after closing / reopening** (not portable).
+- **Other `FileReference` types**: `FileReference(AudioFileContent)` (→ `AudioFile`),
+  `FileReference(Group3dLayer)` (imported FBX, one per layer of the group → `Scene3dFile`),
+  `FileReference(GeometryLayerUser)` (empty path, ignore).
+- **Freshly copied file on disk**: right after `shutil.copy2` + `ref.path.set(...)`, the reference often stays
+  `MissingFile` (deferred indexing). Call `ref.reload.trig()` and check again in a **later** call / run; 2-3 passes
+  may be needed.
+- **Scene of a reference**: top-level Scenes are the `Scene`-class layers in `masterScene.layers` (the
+  `masterScene` has no label); track them during the tree walk.
+- `getUniqueIdentifier()` on a `PythonScriptTool` raises `TypeError ... juce::Uuid`: wrap it in a try (the generic
+  walk already does); to find a tool, compare `script.sourceCode` instead.
 
 ## Known UI bugs
 
