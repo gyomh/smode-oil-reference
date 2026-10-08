@@ -1002,6 +1002,9 @@ a real graphical interface for a Script, with nothing to install.
 - **Native folder picker** from the page: run PowerShell with `-STA` and `System.Windows.Forms.FolderBrowserDialog`
   (`TopMost` owner form) via `subprocess` from the HTTP thread; reveal in Explorer: `explorer /select,<file>`.
   `file:///` links are blocked by browsers (download or open in the browser).
+- **Drop-down lists**: the highlight of an open native `<select>` is forced by Windows (grey) and ignores the page
+  colours; for a consistent interface, draw your own list (button + panel) and keep the hidden `<select>` as the
+  model (value + `change` event).
 
 ## Known UI bugs
 

@@ -976,6 +976,9 @@ une vraie interface graphique pour un Script, sans rien installer.
   (fenêtre propriétaire `TopMost`) par `subprocess` depuis le thread HTTP ; afficher dans l'Explorateur :
   `explorer /select,<fichier>`. Les liens `file:///` sont bloqués par les navigateurs (téléchargement ou ouverture
   dans le navigateur).
+- **Listes déroulantes** : la surbrillance d'un `<select>` natif ouvert est imposée par Windows (gris) et ne
+  suit pas les couleurs de la page ; pour une interface cohérente, dessiner sa propre liste (bouton + panneau) en
+  gardant le `<select>` caché comme modèle (valeur + événement `change`).
 
 ## Bugs UI connus
 
