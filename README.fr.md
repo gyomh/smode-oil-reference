@@ -979,6 +979,20 @@ une vraie interface graphique pour un Script, sans rien installer.
 - **Listes déroulantes** : la surbrillance d'un `<select>` natif ouvert est imposée par Windows (gris) et ne
   suit pas les couleurs de la page ; pour une interface cohérente, dessiner sa propre liste (bouton + panneau) en
   gardant le `<select>` caché comme modèle (valeur + événement `change`).
+- **Le serveur survit à la fermeture du projet** : threads, sockets et globals Python restent en mémoire pendant
+  toute la session Smode ; à la réouverture, le Script retrouve son serveur déjà lancé (un « au premier démarrage du
+  serveur » ne se redéclenche donc pas). Pour réagir à un redémarrage du Script (projet rouvert, Script ajouté, repassé
+  en At Every Update), noter l'heure à chaque exécution : un trou de plus de quelques secondes = redémarrage. À ce
+  moment, oublier les références Oil gardées en cache (elles appartiennent à l'ancien projet).
+- **Compteur d'exécutions** : `tool.script.numExecutions.get()` compte les exécutions de cette instance du Script
+  (une par frame en At Every Update, ~47/s mesuré).
+- **API en POST uniquement** : une page web étrangère peut déclencher un GET sans en-tête `Origin`
+  (`<img src="http://127.0.0.1:...">`) ; un POST de sa part porte toujours son `Origin`, qu'on refuse.
+- **Fichier .py en ASCII** : la façon dont Smode décode un .py glissé dans le projet n'est pas vérifiée ; par prudence,
+  écrire les caractères accentués en séquences `\uXXXX` (chaînes Python, et JS du HTML).
+- **Vérifier l'interface sans toucher la fenêtre de l'utilisateur** : `msedge --headless=new
+  --user-data-dir=<dossier temporaire> --lang=fr --window-size=1400,900 --virtual-time-budget=8000
+  --screenshot=capture.png http://127.0.0.1:<port>/` (`--lang` fixe `navigator.language`).
 
 ## Bugs UI connus
 
@@ -1022,6 +1036,13 @@ Deux autres crashs complets (R15, 06/10/2026), tous deux dus à du **sondage d'�
 4. Une boucle `.set(0..4)` sur `ReferenceGeometryLayerUser().referencer.address.location` (créée à neuf).
 Règle : ne jamais tester des valeurs d'une énumération inconnue. Lire la valeur d'un objet existant
 (`.get()`), puis re-poser **cette** valeur ou une valeur connue (ex. `location.set(1)`).
+
+Un cinquième crash (R15, 08/10/2026), provoqué via le pont MCP :
+5. Un `PythonScriptTool` en Launch Mode « At Every Update » ajouté dans `masterScene.tools`, puis retiré avec
+   `tools.removeAt(i)` dans l'appel suivant → `ACCESS_VIOLATION` dans `juce.dll`. Le pont tourne lui-même dans
+   `masterScene.tools`, pendant la boucle d'exécution des Scripts.
+Règle : passer le Script en Manual (`launchMode.set(0)`) dans un appel, ne le retirer que dans un appel suivant
+(retirer des Scripts en Manual n'a jamais posé de problème).
 
 Après un plantage, Smode peut **rouvrir une vieille sauvegarde** : les sauvegardes automatiques sont dans
 `Documents\Smode Files\<projet>.project\.versions` (toutes les 5 min) ; une recherche de texte dans

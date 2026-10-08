@@ -1005,6 +1005,20 @@ a real graphical interface for a Script, with nothing to install.
 - **Drop-down lists**: the highlight of an open native `<select>` is forced by Windows (grey) and ignores the page
   colours; for a consistent interface, draw your own list (button + panel) and keep the hidden `<select>` as the
   model (value + `change` event).
+- **The server survives closing the project**: threads, sockets and Python globals stay in memory for the whole
+  Smode session; when the project is reopened, the Script finds its server already running (so an "on first server
+  start" never fires again). To react to a Script restart (project reopened, Script added, set back to At Every
+  Update), store the time on each run: a gap of more than a few seconds = restart. At that point, forget cached Oil
+  references (they belong to the old project).
+- **Execution counter**: `tool.script.numExecutions.get()` counts the runs of this Script instance (one per frame in
+  At Every Update, ~47/s measured).
+- **POST-only API**: a foreign web page can trigger a GET without an `Origin` header (`<img src="http://127.0.0.1:...">`);
+  a POST from it always carries its `Origin`, which is refused.
+- **ASCII .py file**: how Smode decodes a .py dropped into the project is not verified; to be safe, write accented
+  characters as `\uXXXX` escapes (Python strings, and the JS of the HTML).
+- **Check the interface without touching the user's window**: `msedge --headless=new
+  --user-data-dir=<temporary folder> --lang=en --window-size=1400,900 --virtual-time-budget=8000
+  --screenshot=capture.png http://127.0.0.1:<port>/` (`--lang` sets `navigator.language`).
 
 ## Known UI bugs
 
@@ -1050,6 +1064,13 @@ Two other complete crashes (R15, 06/10/2026), both due to **probing internal enu
    created).
 Rule: never test values of an unknown enumeration. Read the value of an existing object
 (`.get()`), then put **that** value back or a known value (e.g. `location.set(1)`).
+
+A fifth crash (R15, 08/10/2026), triggered through the MCP bridge:
+5. A `PythonScriptTool` in Launch Mode "At Every Update" added to `masterScene.tools`, then removed with
+   `tools.removeAt(i)` in the next call → `ACCESS_VIOLATION` in `juce.dll`. The bridge itself runs in
+   `masterScene.tools`, during the Scripts' execution loop.
+Rule: set the Script to Manual (`launchMode.set(0)`) in one call, and remove it only in a later call (removing
+Manual Scripts never caused trouble).
 
 After a crash, Smode may **reopen an old save**: the automatic saves are in
 `Documents\Smode Files\<project>.project\.versions` (every 5 min); a text search in the file
