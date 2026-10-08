@@ -32,6 +32,7 @@
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
 - [Références de fichiers, Media Directories et relink](#références-de-fichiers-media-directories-et-relink-r15-08102026)
+- [Interface web servie par un Script](#interface-web-servie-par-un-script-r15-08102026)
 - [Bugs UI connus](#bugs-ui-connus)
 - [Instabilités observées](#instabilités-observées)
 - [Le pont MCP (rappel)](#le-pont-mcp-rappel)
@@ -951,6 +952,30 @@ Vérifié en relinkant un projet de 136 médias (vidéos ProRes + PNG) après ra
   `masterScene.layers` (la `masterScene` n'a pas de label) ; à repérer pendant le parcours de l'arbre.
 - `getUniqueIdentifier()` d'un `PythonScriptTool` lève `TypeError ... juce::Uuid` : entourer d'un try (le
   parcours générique le fait déjà) ; pour retrouver un tool, comparer plutôt `script.sourceCode`.
+
+## Interface web servie par un Script (R15, 08/10/2026)
+
+Modèle validé avec [smode-filemanager](https://github.com/gyomh/smode-filemanager) (`Smode_Filemanager_GUI.py`) :
+une vraie interface graphique pour un Script, sans rien installer.
+
+- **Script en Launch Mode « At Every Update »** : il démarre une fois un `ThreadingHTTPServer` sur `127.0.0.1`
+  (état gardé dans un global, ex. `_FMG`) puis, à chaque frame, traite une `queue.Queue` de tâches Oil.
+- **Oil seulement sur le thread principal** : le thread HTTP pose une tâche (`{"task", "arg", "done": Event}`) et
+  attend l'`Event` ; la frame suivante l'exécute. Le travail lourd **sans Oil** (`os.walk`, copie de fichiers par
+  blocs avec progression) reste dans un thread : Smode ne gèle pas.
+- **Les globals sont partagés entre Scripts** : préfixer tout (`fmg_...`, `_FMG`) pour ne pas écraser les fonctions
+  d'un autre Script du projet.
+- **Mise à jour du code** : le module est réexécuté à chaque frame avec le nouveau `sourceCode`, donc les fonctions
+  appelées par le serveur sont toujours les dernières ; redémarrer le serveur seulement si une constante de version
+  ou le port change.
+- **Fenêtre d'application** : `msedge.exe --app=http://127.0.0.1:<port> --window-size=1400,900` ouvre une fenêtre
+  sans barre d'adresse (Edge est présent sur Windows 10/11).
+- **Sécurité** : écouter `127.0.0.1` seulement, refuser un en-tête `Host` autre que `127.0.0.1` / `localhost` (DNS
+  rebinding) et un `Origin` étranger ; ne pas exposer d'exécution de code arbitraire.
+- **Choix de dossier natif** depuis la page : lancer PowerShell en `-STA` avec `System.Windows.Forms.FolderBrowserDialog`
+  (fenêtre propriétaire `TopMost`) par `subprocess` depuis le thread HTTP ; afficher dans l'Explorateur :
+  `explorer /select,<fichier>`. Les liens `file:///` sont bloqués par les navigateurs (téléchargement ou ouverture
+  dans le navigateur).
 
 ## Bugs UI connus
 

@@ -33,6 +33,7 @@
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
 - [File references, Media Directories and relink](#file-references-media-directories-and-relink-r15-08102026)
+- [Web interface served by a Script](#web-interface-served-by-a-script-r15-08102026)
 - [Known UI bugs](#known-ui-bugs)
 - [Observed instabilities](#observed-instabilities)
 - [The MCP bridge (reminder)](#the-mcp-bridge-reminder)
@@ -979,6 +980,28 @@ Verified by relinking a project with 136 media files (ProRes videos + PNGs) afte
   `masterScene` has no label); track them during the tree walk.
 - `getUniqueIdentifier()` on a `PythonScriptTool` raises `TypeError ... juce::Uuid`: wrap it in a try (the generic
   walk already does); to find a tool, compare `script.sourceCode` instead.
+
+## Web interface served by a Script (R15, 08/10/2026)
+
+Pattern validated with [smode-filemanager](https://github.com/gyomh/smode-filemanager) (`Smode_Filemanager_GUI.py`):
+a real graphical interface for a Script, with nothing to install.
+
+- **Script in Launch Mode "At Every Update"**: it starts a `ThreadingHTTPServer` on `127.0.0.1` once (state kept in a
+  global, e.g. `_FMG`) then, on every frame, processes a `queue.Queue` of Oil tasks.
+- **Oil only on the main thread**: the HTTP thread posts a task (`{"task", "arg", "done": Event}`) and waits for the
+  `Event`; the next frame runs it. Heavy work **without Oil** (`os.walk`, chunked file copy with progress) stays in a
+  thread: Smode does not freeze.
+- **Globals are shared between Scripts**: prefix everything (`fmg_...`, `_FMG`) so you do not overwrite another
+  Script's functions.
+- **Code updates**: the module is re-run on every frame with the new `sourceCode`, so the functions the server calls
+  are always the latest; restart the server only when a version constant or the port changes.
+- **App window**: `msedge.exe --app=http://127.0.0.1:<port> --window-size=1400,900` opens a window without an
+  address bar (Edge ships with Windows 10/11).
+- **Security**: listen on `127.0.0.1` only, reject a `Host` header other than `127.0.0.1` / `localhost` (DNS
+  rebinding) and a foreign `Origin`; do not expose arbitrary code execution.
+- **Native folder picker** from the page: run PowerShell with `-STA` and `System.Windows.Forms.FolderBrowserDialog`
+  (`TopMost` owner form) via `subprocess` from the HTTP thread; reveal in Explorer: `explorer /select,<file>`.
+  `file:///` links are blocked by browsers (download or open in the browser).
 
 ## Known UI bugs
 
