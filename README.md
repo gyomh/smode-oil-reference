@@ -31,6 +31,7 @@
 - [Modifiers, generators and masks (overview)](#modifiers-generators-and-masks-overview)
 - [Audio reactive](#audio-reactive)
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
+- [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
 - [Known UI bugs](#known-ui-bugs)
 - [Observed instabilities](#observed-instabilities)
 - [The MCP bridge (reminder)](#the-mcp-bridge-reminder)
@@ -894,6 +895,39 @@ Other findings (R15, 30/09/2026):
   `ParameterLinkTarget` (`lt.target.set(vec[i])`).
 - Parameter value writes made through the API only propagate to the script at the next Smode
   update (not within the same call): to test, write the script variable directly.
+
+## Imported 3D files, image textures and material compos (R15, 08/10/2026)
+
+Verified while building a Blender -> Krita -> Smode texturing workflow (FBX pieces, one image texture per piece).
+
+- **Importing an FBX by script** (the UI importer does the same): a `Group3dLayer` whose `.tools` holds a
+  `MaterialBank`; one `GeometryLayer` per piece with `generator = Oil.createObject("Scene3dFileGeometryGenerator")`
+  (`gen.file.path.set(r"C:\...\model.fbx")`, `gen.subGeometryToUse.set("NodeName")` - the node name in the file) and
+  `renderer = ReferenceGeometryLayerUser` pointing at a material of the bank (see *Shared materials*). Build everything
+  detached, append the group to the Compo last.
+- **`useLocalPlacement`** (default **False** on a script-created generator; the UI importer sets **True**):
+  - `True`: the geometry is in the node's local space (pivot = node origin, e.g. a joint). The layer's
+    `placement.position` must carry the node position - set it yourself. This is what you want for rigging.
+  - `False`: the geometry arrives already offset by the file's node transform. Adding the position on the layer
+    **double counts** it (pieces separated by gaps).
+  - A layer's `worldMatrix` only reflects the layer's own placement and is **stale for one evaluation** after you
+    change it: read it in a later call.
+- **Re-exported file**: setting the same `file.path` again does **not** reload it; call `gen.file.reload.trig()`.
+- **Blender FBX export** (Y up for Smode): *Apply Transform* (`bake_space_transform=True`) with
+  `apply_scale_options='FBX_SCALE_ALL'` gives vertices in metres, node scale 1 and **no -90 deg X rotation**. With
+  `FBX_SCALE_NONE` / `FBX_SCALE_CUSTOM` the baked file stores centimetres + a node scale of 0.01, which Smode does not
+  apply in local-placement mode (pieces 100x too big, stacked). Without baking, every node carries a 90 deg X rotation.
+- **Image texture**: `Oil.createObject("ImageFileTextureGenerator")`, `gen.file.path.set(str)`. `sourceResolution` is
+  0x0 and `liveStatus` is `uninitialized` until the next evaluation (read it in a later call).
+- **Material map as a Compo** (to keep FX / scale reachable): `mat.components[0].map = compo`, with `compo =
+  Oil.createObject("Compo")` - set `rasterizer.resolution.preset.set(40)` before width/height - and its layer's
+  `generator` set to the generator (`ImageFileTextureGenerator`, `CheckerBoardTextureGenerator`, `UniformTextureGenerator`).
+  `obj.clone()` deep-copies a material or a Compo: the copies are independent (checked by changing a checker size on one).
+- **Reference cache**: after replacing a material's maps by script, layers that reference it keep the old content until
+  `layer.renderer.referencer.reloadInstance.trig()`.
+- `CheckerBoardTextureGenerator.size` is read in percent: `size.width.set(4.0)` shows `Canvas2dSize(400, 400)`.
+- **Driving a Script's parameters from outside**: `tool.script.<name>` does **not** exist (only inside the Script);
+  use `tool.dynamicVariables[i]`, looking the index up by `getFriendlyName()` (e.g. "Reset Rig").
 
 ## Known UI bugs
 

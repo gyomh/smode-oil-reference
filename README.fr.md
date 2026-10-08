@@ -30,6 +30,7 @@
 - [Modificateurs, générateurs et masques (aperçu)](#modificateurs-générateurs-et-masques-aperçu)
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
+- [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
 - [Bugs UI connus](#bugs-ui-connus)
 - [Instabilités observées](#instabilités-observées)
 - [Le pont MCP (rappel)](#le-pont-mcp-rappel)
@@ -862,6 +863,40 @@ Autres constats (R15, 30/09/2026) :
   fonctionne ; un élément peut être la cible d'un `ParameterLinkTarget` (`lt.target.set(vec[i])`).
 - Les écritures de valeur de Parameter faites par l'API ne se propagent au script qu'à la mise à jour suivante de
   Smode (pas dans le même appel) : pour tester, écrire directement la variable du script.
+
+## Fichiers 3D importés, textures image et compos de matériau (R15, 08/10/2026)
+
+Vérifié en construisant un workflow Blender -> Krita -> Smode (pièces FBX, une texture image par pièce).
+
+- **Importer un FBX par script** (l'import de l'interface fait pareil) : un `Group3dLayer` dont `.tools` contient un
+  `MaterialBank` ; un `GeometryLayer` par pièce avec `generator = Oil.createObject("Scene3dFileGeometryGenerator")`
+  (`gen.file.path.set(r"C:\...\modele.fbx")`, `gen.subGeometryToUse.set("NomDuNoeud")` - le nom du nœud dans le fichier) et
+  `renderer = ReferenceGeometryLayerUser` qui pointe un matériau de la banque (voir *Matériaux partagés*). Tout construire
+  hors de la Compo, ajouter le groupe en dernier.
+- **`useLocalPlacement`** (**faux** par défaut sur un générateur créé par script ; l'import de l'interface le met à **vrai**) :
+  - `vrai` : la géométrie est dans le repère local du nœud (pivot = origine du nœud, par ex. une articulation). La
+    `placement.position` du calque doit porter la position du nœud - à poser soi-même. C'est ce qu'il faut pour un rig.
+  - `faux` : la géométrie arrive déjà décalée par la transformation du nœud du fichier. Ajouter la position sur le calque
+    la **compte deux fois** (pièces écartées).
+  - La `worldMatrix` d'un calque ne reflète que son propre placement et est **périmée pendant une évaluation** après un
+    changement : la relire dans un appel suivant.
+- **Fichier ré-exporté** : remettre le même `file.path` ne le recharge **pas** ; appeler `gen.file.reload.trig()`.
+- **Export FBX Blender** (Y haut pour Smode) : *Apply Transform* (`bake_space_transform=True`) avec
+  `apply_scale_options='FBX_SCALE_ALL'` donne des sommets en mètres, une échelle de nœud de 1 et **aucune rotation de
+  -90° en X**. Avec `FBX_SCALE_NONE` / `FBX_SCALE_CUSTOM`, le fichier contient des centimètres + une échelle de nœud de 0,01,
+  que Smode n'applique pas en placement local (pièces 100 fois trop grosses, empilées). Sans « bake », chaque nœud porte une
+  rotation de 90° en X.
+- **Texture image** : `Oil.createObject("ImageFileTextureGenerator")`, `gen.file.path.set(str)`. `sourceResolution` vaut
+  0x0 et `liveStatus` est `uninitialized` jusqu'à l'évaluation suivante (relire dans un appel suivant).
+- **Map de matériau en Compo** (pour garder FX / échelle accessibles) : `mat.components[0].map = compo`, avec `compo =
+  Oil.createObject("Compo")` - `rasterizer.resolution.preset.set(40)` avant width/height - et le `generator` de son calque
+  réglé (`ImageFileTextureGenerator`, `CheckerBoardTextureGenerator`, `UniformTextureGenerator`). `obj.clone()` copie en
+  profondeur un matériau ou une Compo : les copies sont indépendantes (vérifié en changeant la taille d'un damier sur une).
+- **Cache des références** : après remplacement des maps d'un matériau par script, les calques qui le référencent gardent
+  l'ancien contenu tant que `layer.renderer.referencer.reloadInstance.trig()` n'est pas appelé.
+- `CheckerBoardTextureGenerator.size` se lit en pourcentage : `size.width.set(4.0)` affiche `Canvas2dSize(400, 400)`.
+- **Piloter les paramètres d'un Script de l'extérieur** : `tool.script.<nom>` n'existe **pas** (seulement dans le Script) ;
+  utiliser `tool.dynamicVariables[i]`, en cherchant l'indice par `getFriendlyName()` (ex. « Reset Rig »).
 
 ## Bugs UI connus
 
