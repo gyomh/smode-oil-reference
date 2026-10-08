@@ -31,6 +31,7 @@
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
+- [Références de fichiers, Media Directories et relink](#références-de-fichiers-media-directories-et-relink-r15-08102026)
 - [Bugs UI connus](#bugs-ui-connus)
 - [Instabilités observées](#instabilités-observées)
 - [Le pont MCP (rappel)](#le-pont-mcp-rappel)
@@ -897,6 +898,29 @@ Vérifié en construisant un workflow Blender -> Krita -> Smode (pièces FBX, un
 - `CheckerBoardTextureGenerator.size` se lit en pourcentage : `size.width.set(4.0)` affiche `Canvas2dSize(400, 400)`.
 - **Piloter les paramètres d'un Script de l'extérieur** : `tool.script.<nom>` n'existe **pas** (seulement dans le Script) ;
   utiliser `tool.dynamicVariables[i]`, en cherchant l'indice par `getFriendlyName()` (ex. « Reset Rig »).
+
+## Références de fichiers, Media Directories et relink (R15, 08/10/2026)
+
+Vérifié en relinkant un projet de 136 médias (vidéos ProRes + PNG) après rangement des dossiers sur le disque.
+
+- **Pas de fonction relink** dans l'interface ni dans la doc. Les DLL contiennent une commande « Relocate media
+  directory » (clic droit sur un Media Directory, non testée) qui ne sert que si l'arborescence interne est inchangée.
+- **Chemin stocké** : chaque fichier est un `FileReference(VideoFileContent)` (vidéo) ou `FileReference(Color2dMipmaps)`
+  (image), en général `layer.generator.file`. Ses variables : `path` (String), `reload` (Trigger), `file`
+  (`WeakPointer(File)`). `path` vaut `NomDuMediaDirectory/sous-dossier/fichier` : le premier segment est le **nom** du
+  Media Directory, pas un chemin disque.
+- **Fichier introuvable** : `ref.file.get().getOilClassName()` vaut `MissingFile` (affiché `<Missing File>`). Trouvé :
+  `VideoFile` / `ImageFile`, avec `.nativeFile` (chemin disque absolu via `str(fo.nativeFile.get())`).
+- **Relink** : `ref.path.set("NouveauMediaDirectory/sous-dossier/fichier")` suffit : le fichier est résolu tout de
+  suite (pas besoin de `reload`). Vérifier l'existence sur disque avant (`os.path.exists`), puis relire la classe de
+  `ref.file.get()`.
+- **Trouver toutes les références** : parcours générique de l'arbre depuis `script.project` avec `getNumVariables()` /
+  `getVariable(i)` / `getVariableName(i)`, plus `len(o)` / `o[i]` pour les vecteurs et `.get()` sur les
+  `OwnedPointer` (les generators de Compo sont derrière). Dédupliquer par `getUniqueIdentifier()` **seulement s'il est
+  non nul** (sinon le parcours s'arrête après quelques objets) et ignorer les types primitifs (`String`, `Boolean`,
+  `Real`...). ~62 000 objets parcourus en quelques secondes sur un projet de spectacle.
+- Une variable posée sur `script` depuis le pont n'est pas acceptée (`AttributeError` sur `_cppSmodeSDK.Element`) :
+  pour garder des objets d'un appel à l'autre, utiliser `builtins`.
 
 ## Bugs UI connus
 

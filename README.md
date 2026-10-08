@@ -32,6 +32,7 @@
 - [Audio reactive](#audio-reactive)
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
+- [File references, Media Directories and relink](#file-references-media-directories-and-relink-r15-08102026)
 - [Known UI bugs](#known-ui-bugs)
 - [Observed instabilities](#observed-instabilities)
 - [The MCP bridge (reminder)](#the-mcp-bridge-reminder)
@@ -928,6 +929,27 @@ Verified while building a Blender -> Krita -> Smode texturing workflow (FBX piec
 - `CheckerBoardTextureGenerator.size` is read in percent: `size.width.set(4.0)` shows `Canvas2dSize(400, 400)`.
 - **Driving a Script's parameters from outside**: `tool.script.<name>` does **not** exist (only inside the Script);
   use `tool.dynamicVariables[i]`, looking the index up by `getFriendlyName()` (e.g. "Reset Rig").
+
+## File references, Media Directories and relink (R15, 08/10/2026)
+
+Verified by relinking a project with 136 media files (ProRes videos + PNGs) after reorganising the folders on disk.
+
+- **No relink feature** in the UI or the docs. The DLLs contain a "Relocate media directory" command (right-click on a
+  Media Directory, untested) which only helps if the inner folder structure is unchanged.
+- **Stored path**: each file is a `FileReference(VideoFileContent)` (video) or `FileReference(Color2dMipmaps)` (image),
+  usually `layer.generator.file`. Its variables: `path` (String), `reload` (Trigger), `file` (`WeakPointer(File)`).
+  `path` is `MediaDirectoryName/subfolder/file`: the first segment is the Media Directory **name**, not a disk path.
+- **Missing file**: `ref.file.get().getOilClassName()` is `MissingFile` (shown as `<Missing File>`). Found:
+  `VideoFile` / `ImageFile`, with `.nativeFile` (absolute disk path via `str(fo.nativeFile.get())`).
+- **Relink**: `ref.path.set("NewMediaDirectory/subfolder/file")` is enough: the file resolves immediately (no
+  `reload` needed). Check the file exists on disk first (`os.path.exists`), then read the class of `ref.file.get()` again.
+- **Finding every reference**: generic tree walk from `script.project` with `getNumVariables()` / `getVariable(i)` /
+  `getVariableName(i)`, plus `len(o)` / `o[i]` for vectors and `.get()` on `OwnedPointer`s (Compo generators sit behind
+  them). Deduplicate by `getUniqueIdentifier()` **only when it is non-zero** (otherwise the walk stops after a few
+  objects) and skip primitive types (`String`, `Boolean`, `Real`...). ~62,000 objects walked in a few seconds on a
+  show project.
+- Setting an attribute on `script` from the bridge is refused (`AttributeError` on `_cppSmodeSDK.Element`): to keep
+  objects between calls, use `builtins`.
 
 ## Known UI bugs
 
