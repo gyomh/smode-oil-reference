@@ -730,6 +730,12 @@ une variable détruit l'ancien paramètre (nouvel objet, valeur par défaut).
   variable de boucle `t` (niveau module) a écrasé le `t` du pont (-> `'WidgetTool' object has no
   attribute 'launchMode'`). Mettre tout le corps d'un script dans une fonction
   (`def _monscript_main(): ...`, puis l'appeler) : rien ne fuit à part ce nom de fonction.
+- **Un paramètre `CustomEnumeration` perd ses `enumerators` quand le script recompile**
+  (`sourceCode.set(...)`), contrairement aux autres valeurs de paramètres : la remplir à nouveau à
+  l'exécution suivante, et ne pas considérer une liste vide comme une « première installation » seulement.
+- **Un `HsvColor` réglé sur un `Parameter` tout juste créé, avant son append dans la banque, ne tient pas**
+  (retour à `00000000`), alors qu'un `Percentage` tient : copier les couleurs (`red/green/blue/alpha`)
+  après l'append.
 - **Un Script peut vivre dans un `Group3dLayer`** (`group.tools.append(tool)`) : `script.parentElement` est
   alors le groupe (`.layers`, `.tools`, `.placement`, `.worldMatrix`), pas la Compo. Chaîne de parents
   vérifiée : script → `Group3dLayer` → (groupes imbriqués…) → `Compo` → `TextureLayer` → `Scene` → `Project`
@@ -1042,6 +1048,29 @@ WidgetTool (dans .tools d'une scène/compo ; a aussi runOnServer)
 - Exemple officiel : `packs/Features/Misc/WidgetTool.compo` = un WidgetTool affichant les macros
   d'une `ParameterBank` (FADER 01...), chacune pilotant plusieurs cibles via `ParameterLinkTarget` +
   courbes `FunctionLinkModifier`/`KeyframeFunction`. Le widget n'est qu'une vue de la banque.
+
+- **Construire des panneaux par script** (script prêt : `Widget_Builder_GYOMH.py`, un panneau par
+  `ParameterBank`) :
+  - Un script peut viser des **variables que l'UI ne permet pas de glisser** : `bank.applyPrevious` /
+    `applyNext` / `applyRandom` / `saveAsNew`, `currentStateIndex`, ou la valeur d'un
+    `Parameter(UnboundedPercentage)` (l'UI refuse de la déposer). On peut créer n'importe quel
+    `Parameter(<Type>)` (`Parameter(UnboundedPercentage)`, `Parameter(PositivePixels)`...) : donner au
+    monitor le type de la propriété surveillée.
+  - Tailles trouvées : bouton réduit à 104x56 (barre de titre + bouton, 112 pour « Apply Previous ») ;
+    un champ de valeur tient en 104x56 (Percentage compris : pas de potard à cette hauteur) ; fader
+    104x272 ; roue de couleur 272 de large. L'éditeur travaille sur une grille de 8 px : 8 px = écart minimum.
+  - **Reconstruire en remplaçant le WidgetTool, pas par `definitions.clear()` + remplissage** : quand le
+    panneau est ouvert dans le Widget Editor, l'éditeur réécrit sa copie en cache (anciennes positions)
+    par-dessus une liste vidée puis remplie. Un WidgetTool neuf (l'ancien supprimé) s'affiche
+    correctement, éditeur ouvert ou non.
+  - Supprimer `WidgetTool`, `ParameterBank` et `LinkBank` de `container.tools` avec `removeAt(k)`
+    (index trouvé par `container.tools[k] is obj`) marche sans crash (Links d'abord, puis banques, puis
+    panneau). Marque cachée pour retrouver un panneau renommé : `groupDefinition.caption` (stockée,
+    jamais affichée).
+  - Un `Parameter` de banque **avec des cibles** reçoit un nom automatique d'après sa cible et **ne peut
+    pas être renommé dans l'UI** (`p.label.set()` marche par script) ; un Parameter **sans cible** (ex. un
+    monitor) se renomme dans l'arbre. Associer un monitor à sa propriété d'une construction à l'autre :
+    `str(link.source.target)` (`@space/<uuid>/scaleFactor/width`) est stable.
 
 **Transitions entre états de banque** : pas de durée sur le State — ajouter un modifier **Dynamic**
 dans `ParameterLinkTarget.modifiers` du paramètre de banque (ou `Parameter.modifiers`) :

@@ -746,6 +746,11 @@ change; renaming a variable destroys the old parameter (new object, default valu
   variable `t` overwrote the bridge's own `t` (-> `'WidgetTool' object has no attribute 'launchMode'`).
   Put the whole body of a script in one function (`def _myscript_main(): ...`, then call it): nothing
   leaks except that function name.
+- **A `CustomEnumeration` parameter loses its `enumerators` when the script recompiles**
+  (`sourceCode.set(...)`), unlike the other parameter values: repopulate it on the next run, and do not
+  treat an empty list as "first install" only.
+- **An `HsvColor` set on a freshly created `Parameter` before its append into the bank does not stick**
+  (back to `00000000`), whereas a `Percentage` does: copy colours (`red/green/blue/alpha`) after the append.
 - **A Script can live in a `Group3dLayer`** (`group.tools.append(tool)`): `script.parentElement`
   is then the group (`.layers`, `.tools`, `.placement`, `.worldMatrix`), not the Compo. Parent
   chain verified: script → `Group3dLayer` → (nested groups…) → `Compo` → `TextureLayer` → `Scene` →
@@ -1066,6 +1071,25 @@ WidgetTool (in scene/compo .tools; also has runOnServer)
 - Official example: `packs/Features/Misc/WidgetTool.compo` = a WidgetTool showing the macros of a
   `ParameterBank` (FADER 01...), each driving several targets through `ParameterLinkTarget` +
   `FunctionLinkModifier`/`KeyframeFunction` curves. The widget is only a view of the bank.
+
+- **Building panels by script** (ready-made: `Widget_Builder_GYOMH.py`, one panel per `ParameterBank`):
+  - A script can target **variables the UI cannot drag**: `bank.applyPrevious` / `applyNext` /
+    `applyRandom` / `saveAsNew`, `currentStateIndex`, or a `Parameter(UnboundedPercentage)` value
+    (the UI refuses to drop it). Any `Parameter(<Type>)` can be created (`Parameter(UnboundedPercentage)`,
+    `Parameter(PositivePixels)`...): give a monitor the type of the property it watches.
+  - Widget sizes found: button reduced to 104x56 (title bar + button, 112 for "Apply Previous");
+    a value field fits in 104x56 (Percentage included: no knob at that height); fader 104x272; colour
+    wheel 272 wide. The editor works on an 8 px grid: 8 px = minimum spacing.
+  - **Rebuild by replacing the WidgetTool, not by `definitions.clear()` + refill**: when the panel is open
+    in the Widget Editor, the editor writes its cached copy (old positions) back over a cleared and
+    refilled list. A brand-new WidgetTool (old one removed) displays correctly, editor open or not.
+  - Removing `WidgetTool`, `ParameterBank` and `LinkBank` from `container.tools` with `removeAt(k)`
+    (index found with `container.tools[k] is obj`) works without crash (Links first, then banks, then
+    panel). Hidden tag to find a panel again after a rename: `groupDefinition.caption` (stored, never shown).
+  - A bank `Parameter` **with targets** gets an automatic name from its target and **cannot be renamed
+    in the UI** (`p.label.set()` works by script); a Parameter **without targets** (e.g. a monitor) can be
+    renamed in the tree. Matching a monitor to its property across rebuilds: `str(link.source.target)`
+    (`@space/<uuid>/scaleFactor/width`) is stable.
 
 **Transitions between bank states**: no duration on the State — add a **Dynamic** modifier to the
 bank parameter's `ParameterLinkTarget.modifiers` (or `Parameter.modifiers`): `SmoothLinkModifier`
