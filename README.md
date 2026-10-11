@@ -35,6 +35,7 @@
 - [File references, Media Directories and relink](#file-references-media-directories-and-relink-r15-08102026)
 - [Web interface served by a Script](#web-interface-served-by-a-script-r15-08102026)
 - [Widget Tool (R15, 09/10/2026)](#widget-tool-r15-09102026)
+- [Video export from a script](#video-export-from-a-script-r15-11102026)
 - [Known UI bugs](#known-ui-bugs)
 - [Observed instabilities](#observed-instabilities)
 - [The MCP bridge (reminder)](#the-mcp-bridge-reminder)
@@ -58,6 +59,12 @@ Reliable methods, to be used in this order:
 5. Oil `Map` (e.g. `TimelineCue.elementTracks`): no access by integer index (`map[0]` raises
    `TypeError`, it expects a key object) — iterate with `.items()` (returns ordinary Python
    key/value pairs).
+   No per-key removal either: a `Map` only offers `clear()`, `items()`, `size()`, `isEmpty()`.
+6. `Oil.getObject(space, uniqueIdentifier)` exists ("Get the Oil object of the given uniqueIdentifier
+   within the given space") but returned `None` for every format tried with the address of a live
+   element (`"space"` / `"@space"` + `<uuid>` / `@<uuid>` / `{<uuid>}`, R15). The `@space/<uuid>`
+   addresses shown by `WeakPointer.toString()` change at every session (not the uuids of the saved
+   file). Not a usable lookup so far.
 
 ## Golden rule: configure before adding, never after
 
@@ -616,6 +623,19 @@ script.project.masterScene.layers.append(scene)   # last append
 - Frame-by-frame diagnosis: make the Script write one line per execution into a file
   (`open(path, 'a')`), play the timeline by script, then analyse the file (bridge calls are not
   synchronous with the frames).
+- **Main timeline of the project = `masterScene.mainAnimation`** (can be `None` until one is created;
+  `masterScene.mainAnimation = Oil.createObject("TimelineCue")`). Dragging a Scene's timeline into it in the
+  UI creates an `elementTracks` entry keyed by the **Scene** (R15, 11/10/2026): `ElementTrack.target` =
+  `ElementAutomationTarget` (`element`, `activation`, `intensity` = the Scene's `opacity`, `transport` = the
+  Scene timeline's transport), one `ElementTrackBlock` with `autoLength = true` (length = the Scene timeline
+  length). Same result by script: `tc.createBlock(scene)[1]`, then `block.position.set(0)` (the block is
+  created at the cursor) and `block.autoLength.set(True)`.
+- `tc.transport.length.set(seconds)` is enough to resize a timeline: `parameters.targetLength` and
+  `timeCode.endTime` follow by themselves. The **End** of a project video export (File > Export Video) is
+  initialised with the main timeline length.
+- Removing one track: impossible per key (see `Map` above); `tc.elementTracks.clear()` then recreate the
+  wanted tracks, or switch a track off with `track.activation.set(False)`. After `clear()`, the Python
+  wrappers of the old tracks/blocks point to destroyed objects: never touch them again (crash n°6).
 
 ## Modifiers, generators and masks (overview)
 
@@ -1110,6 +1130,40 @@ has another `opacity` (same name in the tree).
 - Owner of a variable: `var.isChildOf(element)` works (an element is a child of itself) — used to
   name widgets "Parameter > Value".
 
+## Video export from a script (R15, 11/10/2026)
+
+The API exists (`SmodeSDK.SceneVideoExportTask()` is an official helper in `site-packages/Smode/SmodeSDK.py`),
+but **launching the export from Python depends on the licence**.
+
+- Classes (`Plugins/VideoExport.dll`): `SceneVideoExportTask` / `CompoVideoExportTask` +
+  `SceneVideoExportUserSettings` / `CompoVideoExportUserSettings`: `begin` / `end` (`Seconds`), `timeBase`
+  (`VideoTimeBase`), `speed`, `fileName`, `outputDirectory` (`NativeDirectory`), `startImmediately`,
+  `soundAlert`, `fileExporter`, `targets` (`VideoExportTargetSelection`: `selectedScopes` / `selectedLeaves`,
+  `ObjectSelection` with `insert()`); the Compo version also has `resolution`. `task.parameters`
+  (`VideoExportParameters`): `documentToClone` (the project), `rootExportedElement` (the element whose main
+  timeline is exported, e.g. a Scene), `settings` (`OwnedPointer`, direct assignment).
+- Exporters (`Plugins/AVStreaming.dll`), set on `settings.fileExporter` / `.videoExporter` / `.audioExporter`
+  (`None` = no audio): containers `FFMPEGQuicktimeAVFileExporter` (default), `FFMPEGMPEG4AVFileExporter`,
+  `FFMPEGMatroskaAVFileExporter`, `FFMPEGAVIAVFileExporter`, `FFMPEGWAVAVFileExporter`,
+  `ImageSequenceAVFileExporter`; video `FFMPEGProResVideoExporter` (`profile`, `colorSpace`),
+  `FFMPEGHapVideoExporter` (default), `FFMPEGH264NvencVideoExporter` / `FFMPEGH264AmfVideoExporter` /
+  `FFMPEGH264AutoVideoExporter` / `FFMPEGOpenH264VideoExporter` (`bitrate`, `profile`...),
+  `FFMPEGQuicktimeMJPEGVideoExporter`, `FFMPEGQuicktimeAnimationVideoExporter` (`exportAlpha`),
+  `ImageSequenceVideoExporter` (+ `Png` / `Jpeg` / `Targa` `FreeImageFileExporter`); audio `FFMPEGAACAudioExporter`,
+  `FFMPEGAC3AudioExporter`, `FFMPEGFLACAudioExporter`, `FFMPEGPCMAudioExporter` (`numChannels`, `timeBase`).
+- Task queue: `engine.tasks.group` (`RootGroupTask`: `tasks`, `paused`, **`sequential = False`** by default:
+  queued exports would run in parallel).
+- **Licence gate**: everything above can be built, but `engine.tasks.group.tasks.append(task)` raises
+  `ValueError('your license does not allow to export using python')` (check inside `Plugins/Python.dll`)
+  with a Smode Compose edition + "4K Video Export (Pro Codec | No Watermark)" licence. Which licence allows
+  it was not verified. The current licence can be read: `engine.licensing.features` (`videoFileExport`,
+  `videoFileExportPro`, `videoFileExportUnwatermaked`, `videoFileExportMultiTarget` = several targets in
+  one export, `maxVideoFileExportWidth/Height/Pixels`...) and `engine.licensing.licenses`
+  (`editionProduct`, `videoExportProduct`).
+- The settings of the **File > Export Video** dialog are a GUI-side object (saved in
+  `AppData\Roaming\Smode Compose\configurations\Kiwi_<version>.configuration`, key
+  `sceneVideoExportUserSettings`: last file name, output directory, end...), not reachable from Oil.
+
 ## Known UI bugs
 
 - **Links shown as "Disconnected"** after creation through the API although they really work
@@ -1161,6 +1215,14 @@ A fifth crash (R15, 08/10/2026), triggered through the MCP bridge:
    `masterScene.tools`, during the Scripts' execution loop.
 Rule: set the Script to Manual (`launchMode.set(0)`) in one call, and remove it only in a later call (removing
 Manual Scripts never caused trouble).
+
+A sixth crash (R15, 11/10/2026), through the MCP bridge:
+6. A loop over the bridge's `globals()` calling `getOilClassName()` on every value → `ACCESS_VIOLATION` in
+   `api-Oil.dll`. Among the variables left by earlier calls were wrappers of `ElementTrack` /
+   `ElementTrackBlock` destroyed in the meantime by `timeline.elementTracks.clear()`: a Python wrapper does
+   not keep its Oil object alive, it dangles.
+Rule: never touch a wrapper whose object may have been destroyed (cleared vector/map, removed element); in
+the bridge, work inside functions (local variables) and `del` the module-level ones, never scan `globals()`.
 
 After a crash, Smode may **reopen an old save**: the automatic saves are in
 `Documents\Smode Files\<project>.project\.versions` (every 5 min); a text search in the file
