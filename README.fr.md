@@ -292,8 +292,10 @@ outputVideo.source.set(cm.rootArea)   # pas outputVideo.source.set(cm)
 - Le `renderer.target.get()` d'un calque peut être l'une de ces zones ou la map entière (`cm.rootArea`) : retrouver
   le propriétaire avec `target.isChildOf(zone)` / `target.isChildOf(cm)` (vrai aussi pour l'élément lui-même).
 - `pipeline.processors` contient des `ProcessorCompo` (une compo : `layers`, `rasterizer`, `mainAnimation`...). Un
-  Processor qui montre une zone = un `TextureLayer` dont le générateur est un `PipelineTextureGenerator` avec
-  `.source` (`PipelineSourceWeakPointer`) sur la zone (`toString()` = `SCREEN 01+02 -> SCREEN 01`).
+  Processor regroupe ou isole des parties du pipeline, dans n'importe quelle combinaison : une zone, plusieurs
+  zones, une ou plusieurs Content Maps entières, des zones prises dans différentes Content Maps... Chaque source est
+  un `TextureLayer` dont le générateur est un `PipelineTextureGenerator` avec `.source` (`PipelineSourceWeakPointer`)
+  sur une zone ou une map (`toString()` = ex. `SCREEN 01+02 -> SCREEN 01`), placé dans le cadre propre du Processor.
 
 
 **ContentMap / zones** (`pipeline.contentMaps`) :
@@ -1172,8 +1174,9 @@ mais **lancer l'export depuis Python dépend de la licence**.
 - Sur le disque, les espaces du nom de fichier deviennent `_` (`TEST_Scene 1_v1` -> `TEST_Scene_1_v1.mov`).
 - `PythonScript.executeDuringExports` (sur `tool.script`, `False` par défaut) : les Scripts de la copie exportée du
   projet ne tournent pas pendant le rendu.
-- **Cibles d'export** = Content Maps et Processors seulement : une zone de ContentMap ne s'exporte pas seule. Mise en
-  place habituelle : un Processor par zone à exporter (voir *Zones, cibles des calques et Processors* plus haut).
+- **Cibles d'export** = Content Maps et Processors seulement : une zone de ContentMap ne s'exporte pas seule. Pour
+  exporter une zone, ou un assemblage de zones / de Content Maps, on construit un Processor (voir *Zones, cibles des
+  calques et Processors* plus haut), par exemple un Processor par écran.
 - **Après l'Ok, un export qui charge ses médias bloque le fil principal de Smode** (17 s vus sur un projet de
   spectacle avec de longs clips vidéo) : les Scripts « At Every Update » ne tournent pas pendant ce temps. Un Script
   qui détecte une réouverture du projet par un trou entre deux images ne doit pas prendre cette pause pour une
