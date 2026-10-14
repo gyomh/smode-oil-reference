@@ -286,6 +286,15 @@ must point to its `ContentArea` (`cm.rootArea`, not `cm`):
 outputVideo.source.set(cm.rootArea)   # not outputVideo.source.set(cm)
 ```
 
+**Zones, layer targets and Processors** (R15, 14/10/2026, read on a show project):
+- The zones of a ContentMap are `cm.rootArea.areas` (`ContentArea`, named by `.label`, e.g. `SCREEN 01`).
+- A layer's `renderer.target.get()` can be one of these zones or the whole map (`cm.rootArea`): find the owner with
+  `target.isChildOf(zone)` / `target.isChildOf(cm)` (true for the element itself too).
+- `pipeline.processors` holds `ProcessorCompo` items (a compo: `layers`, `rasterizer`, `mainAnimation`...). A
+  Processor showing one zone = a `TextureLayer` whose generator is a `PipelineTextureGenerator` with `.source`
+  (`PipelineSourceWeakPointer`) on the zone (`toString()` = `SCREEN 01+02 -> SCREEN 01`).
+
+
 **ContentMap / zones** (`pipeline.contentMaps`):
 ```python
 cm = Oil.createObject("ContentMap")
@@ -1180,6 +1189,11 @@ but **launching the export from Python depends on the licence**.
 - On disk the spaces of the file name become `_` (`TEST_Scene 1_v1` -> `TEST_Scene_1_v1.mov`).
 - `PythonScript.executeDuringExports` (on `tool.script`, `False` by default): the Scripts of the exported copy of
   the project do not run during the render.
+- **Export targets** = Content Maps and Processors only: a zone of a ContentMap cannot be exported on its own. The
+  usual setup is one Processor per zone to export (see *Zones, layer targets and Processors* above).
+- **After the Ok, an export loading its media blocks Smode's main thread** (17 s seen on a show project with long
+  video clips): the "At Every Update" Scripts do not run during that time. A Script that detects a reopened project
+  through a gap between two frames must not take this pause for one (compare the project name instead).
 
 ## Known UI bugs
 

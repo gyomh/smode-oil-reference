@@ -287,6 +287,15 @@ faut pointer vers sa `ContentArea` (`cm.rootArea`, pas `cm`) :
 outputVideo.source.set(cm.rootArea)   # pas outputVideo.source.set(cm)
 ```
 
+**Zones, cibles des calques et Processors** (R15, 14/10/2026, lu sur un projet de spectacle) :
+- Les zones d'une ContentMap sont `cm.rootArea.areas` (`ContentArea`, nommées par `.label`, ex. `SCREEN 01`).
+- Le `renderer.target.get()` d'un calque peut être l'une de ces zones ou la map entière (`cm.rootArea`) : retrouver
+  le propriétaire avec `target.isChildOf(zone)` / `target.isChildOf(cm)` (vrai aussi pour l'élément lui-même).
+- `pipeline.processors` contient des `ProcessorCompo` (une compo : `layers`, `rasterizer`, `mainAnimation`...). Un
+  Processor qui montre une zone = un `TextureLayer` dont le générateur est un `PipelineTextureGenerator` avec
+  `.source` (`PipelineSourceWeakPointer`) sur la zone (`toString()` = `SCREEN 01+02 -> SCREEN 01`).
+
+
 **ContentMap / zones** (`pipeline.contentMaps`) :
 ```python
 cm = Oil.createObject("ContentMap")
@@ -1163,6 +1172,12 @@ mais **lancer l'export depuis Python dépend de la licence**.
 - Sur le disque, les espaces du nom de fichier deviennent `_` (`TEST_Scene 1_v1` -> `TEST_Scene_1_v1.mov`).
 - `PythonScript.executeDuringExports` (sur `tool.script`, `False` par défaut) : les Scripts de la copie exportée du
   projet ne tournent pas pendant le rendu.
+- **Cibles d'export** = Content Maps et Processors seulement : une zone de ContentMap ne s'exporte pas seule. Mise en
+  place habituelle : un Processor par zone à exporter (voir *Zones, cibles des calques et Processors* plus haut).
+- **Après l'Ok, un export qui charge ses médias bloque le fil principal de Smode** (17 s vus sur un projet de
+  spectacle avec de longs clips vidéo) : les Scripts « At Every Update » ne tournent pas pendant ce temps. Un Script
+  qui détecte une réouverture du projet par un trou entre deux images ne doit pas prendre cette pause pour une
+  réouverture (comparer plutôt le nom du projet).
 
 ## Bugs UI connus
 
