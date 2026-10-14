@@ -1151,8 +1151,8 @@ but **launching the export from Python depends on the licence**.
   `FFMPEGQuicktimeMJPEGVideoExporter`, `FFMPEGQuicktimeAnimationVideoExporter` (`exportAlpha`),
   `ImageSequenceVideoExporter` (+ `Png` / `Jpeg` / `Targa` `FreeImageFileExporter`); audio `FFMPEGAACAudioExporter`,
   `FFMPEGAC3AudioExporter`, `FFMPEGFLACAudioExporter`, `FFMPEGPCMAudioExporter` (`numChannels`, `timeBase`).
-- Task queue: `engine.tasks.group` (`RootGroupTask`: `tasks`, `paused`, **`sequential = False`** by default:
-  queued exports would run in parallel).
+- Task queue: `engine.tasks.group` (`RootGroupTask`: `tasks`, `paused`, `sequential = False` by default). Even
+  so, queued video exports are rendered **one after the other**, not in parallel (observed, R15, 14/10/2026).
 - **Licence gate**: everything above can be built, but `engine.tasks.group.tasks.append(task)` raises
   `ValueError('your license does not allow to export using python')` (check inside `Plugins/Python.dll`)
   with a Smode Compose edition + "4K Video Export (Pro Codec | No Watermark)" licence. Which licence allows
@@ -1163,6 +1163,23 @@ but **launching the export from Python depends on the licence**.
 - The settings of the **File > Export Video** dialog are a GUI-side object (saved in
   `AppData\Roaming\Smode Compose\configurations\Kiwi_<version>.configuration`, key
   `sceneVideoExportUserSettings`: last file name, output directory, end...), not reachable from Oil.
+- **Export tasks created by the UI** (R15, 14/10/2026), readable from a script in `engine.tasks.group.tasks`:
+  - each Ok of the dialog adds a `SceneVideoExportTask` named `Video Export of <project file> > <fileName>`
+    (a Cancel adds nothing: comparing the task names before / after tells the two apart);
+  - `state` (`TaskState`): `uninitialized` (waiting, e.g. Start Immediately unticked: `paused = true`), `running`,
+    `terminated`; `status.state` = `success` (else `status.message`); `progressionString` e.g.
+    `679/1001 Frames 13.58s /20.02s (Remaining time: 16 secs)` then `Done: 1001 Frames exported`;
+    `startTimeSinceEpochMs` (0 until it starts); **no end time** (note it yourself when `terminated` shows up);
+  - finished tasks **stay in the list** until removed in the Tasks menu;
+  - `progression` is a `Percentage`: **`.get()` returns a fraction 0..1** while `toString()` shows 0..100
+    (`0.678` / `67.832`);
+  - `parameters.documentToClone` is the live `ProjectDocument` (`script.project.isChildOf(doc)` is true) and a
+    paused task stays `uninitialized`, yet **the render is the state of the project at the Ok click**: a project
+    changed afterwards (other Scene activated, main timeline rebuilt) does not change an export started later
+    from the Tasks menu (checked on the rendered file). Preparing the next export right after an Ok is safe.
+- On disk the spaces of the file name become `_` (`TEST_Scene 1_v1` -> `TEST_Scene_1_v1.mov`).
+- `PythonScript.executeDuringExports` (on `tool.script`, `False` by default): the Scripts of the exported copy of
+  the project do not run during the render.
 
 ## Known UI bugs
 
