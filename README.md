@@ -873,6 +873,28 @@ script itself.
 - Creating a Script in a project: `t = Oil.createObject("PythonScriptTool")`,
   `t.script.sourceCode.set(src)`, `t.launchMode.set(0)`, `t.label = "Name"`,
   `layer.generator.tools.append(t)` — confirmed.
+- **"At Every Update" runs the whole source again on every frame, in the same globals** (R15, 18/10/2026): every
+  `class` is created again each frame. An exception class raised by a thread and caught a few frames later is no
+  longer the same object, so `except MyError:` misses it. Keep such classes (anything compared by identity) in a
+  persistent dict: `MyError = _STATE.setdefault("MyError", MyError)`.
+- **Threads and the Python lock (GIL)** (R15, 18/10/2026, measured from a Script thread while Smode runs): Smode
+  holds the lock most of the time. Every `ctypes` call through `WinDLL` releases it and then waits ~30-250 ms to get
+  it back: `time.sleep(0.02)` lasts 49 ms (median), a 40x40 screen capture (10 GDI calls) 149 ms, `EnumWindows` +
+  `GetWindowText` over 430 windows 619 ms, one log line (open / write / close) ~100 ms. A busy wait is not better.
+  - Quick calls that never wait for Smode's main thread can keep the lock: load the DLL with `ctypes.PyDLL`
+    (64-bit Windows has one calling convention). Capture 149 -> 41 ms, window search 619 ms -> 1 ms.
+  - Not through `PyDLL`: anything that sends a message to Smode's own windows (`GetWindowText` sends `WM_GETTEXT`
+    to the main thread: use `InternalGetWindowText`, same result without a message), blocking calls (`MessageBox`),
+    input (`SendInput`, `SetCursorPos`), activation, clipboard.
+  - Write files from one dedicated thread fed by a `queue.SimpleQueue` (the working thread no longer waits).
+  - No low-level hook (`WH_KEYBOARD_LL` / `WH_MOUSE_LL`) in Python inside Smode: every input event of the system
+    waits for the Python callback (keys sent with `SendInput` took ~50 ms each). Put the hook in a separate process
+    (e.g. PowerShell with `Add-Type` C#) and send its events back through stdout.
+  - A thread started from the MCP bridge only runs while the main thread executes Python, and the bridge globals
+    are reassigned between calls: import inside the thread function.
+- A Windows command line is limited to 32767 characters: a long PowerShell script passed with `-EncodedCommand`
+  fails with *The filename or extension is too long*. Write it to a `.ps1` file, start it with `-File`, and read
+  commands with `[Console]::In.ReadLine()`.
 
 ### Reading the UI selection (UI Automation, outside Oil)
 
@@ -1197,6 +1219,24 @@ but **launching the export from Python depends on the licence**.
 - **After the Ok, an export loading its media blocks Smode's main thread** (17 s seen on a show project with long
   video clips): the "At Every Update" Scripts do not run during that time. A Script that detects a reopened project
   through a gap between two frames must not take this pause for one (compare the project name instead).
+- **Exporters described by Oil** (R15, 18/10/2026): `Oil.createObject(className)` builds one (nothing exported);
+  `getFriendlyName()` gives the name shown in the Export Video window, and its variables
+  (`getNumVariables` / `getVariable(i)` / `getVariableName(i)` / `getFriendlyName()`) give its options in order:
+  - containers (`...AVFileExporter`): Apple QuickTime, Audio Video Interleaved, MPEG-2, MPEG-4, Matroska,
+    Windows Media (`audioExporter`, `videoExporter`), Image Sequence (`audioExporter`, `videoExporter`,
+    `audioFileExporter`), audio only: Waveform Audio, Audio IFF, Free Lossless Audio Codec;
+  - video: Apple ProRes (`cpuUsage`, `profile`, `colorSpace`), Hap (`cpuUsage`, `profile`, `numChunks`), Hap (GPU or
+    Squish encoder) (`profile`, `numChunks`, `encoderQuality`), Nvenc H.264 (`bitrate` "40000k", `preset`,
+    `profile`), AMF H.264 (`qualityPreset`), H.264 (best available) (`encodingQuality`), Open H.264, QuickTime
+    MJPEG, QuickTime Animation (`exportAlpha`), Windows Media Video, Image Sequence (`imageFileExporter`); all have
+    `timeBase` and `resolution` (set by the export);
+  - audio: AAC and AC-3 (`numChannels`, `cpuUsage`, `bitrate`), FLAC, PCM (`componentType`); `timeBase` 48000/1.
+  - The window does not show every variable (ProRes: Cpu Usage and Profile only; `colorSpace` hidden).
+  - An exporter **owned** by a task (`task.parameters.settings.fileExporter`, its `videoExporter`...) returns the
+    friendly name of its *variable* ("File Exporter", "Video Exporter"): to get the format name, use
+    `Oil.createObject(obj.getOilClassName()).getFriendlyName()`.
+- **An export cancelled in Smode** (Tasks menu): its `state` becomes `canceled`, then the task disappears from
+  `engine.tasks.group.tasks`. A task has no cancel method (`RootGroupTask` has `cancelable` / `pausable`).
 
 ## Known UI bugs
 

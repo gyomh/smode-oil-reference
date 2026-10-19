@@ -851,6 +851,31 @@ pas seulement le script lui-même.
   ancien script homonyme, ou script absent du projet rechargé sans sauvegarde).
 - Créer un Script dans un projet : `t = Oil.createObject("PythonScriptTool")`, `t.script.sourceCode.set(src)`,
   `t.launchMode.set(0)`, `t.label = "Nom"`, `layer.generator.tools.append(t)` — confirmé.
+- **« At Every Update » réexécute toute la source à chaque image, dans les mêmes globals** (R15, 18/10/2026) : chaque
+  `class` est recréée à chaque image. Une classe d'exception levée par un fil et attrapée quelques images plus tard
+  n'est plus le même objet : `except MonErreur:` la rate. Gardez ces classes (tout ce qui se compare par identité)
+  dans un dictionnaire persistant : `MonErreur = _ETAT.setdefault("MonErreur", MonErreur)`.
+- **Fils et verrou Python (GIL)** (R15, 18/10/2026, mesuré depuis un fil de Script pendant que Smode tourne) : Smode
+  garde le verrou la plupart du temps. Chaque appel `ctypes` par `WinDLL` le rend, puis attend ~30-250 ms pour le
+  reprendre : `time.sleep(0.02)` dure 49 ms (médiane), une capture d'écran 40x40 (10 appels GDI) 149 ms,
+  `EnumWindows` + `GetWindowText` sur 430 fenêtres 619 ms, une ligne de journal (open / write / close) ~100 ms. Une
+  attente active n'est pas meilleure.
+  - Les appels rapides qui n'attendent jamais le fil principal de Smode peuvent garder le verrou : chargez la DLL
+    avec `ctypes.PyDLL` (Windows 64 bits n'a qu'une convention d'appel). Capture 149 -> 41 ms, recherche de fenêtres
+    619 ms -> 1 ms.
+  - Jamais par `PyDLL` : ce qui envoie un message aux fenêtres de Smode (`GetWindowText` envoie `WM_GETTEXT` au fil
+    principal : utilisez `InternalGetWindowText`, même résultat sans message), les appels bloquants (`MessageBox`),
+    les entrées (`SendInput`, `SetCursorPos`), l'activation, le presse-papier.
+  - Écrivez les fichiers depuis un seul fil dédié alimenté par une `queue.SimpleQueue` (le fil de travail n'attend
+    plus).
+  - Pas de hook bas niveau (`WH_KEYBOARD_LL` / `WH_MOUSE_LL`) en Python dans Smode : chaque événement d'entrée du
+    système attend le callback Python (les touches envoyées par `SendInput` prenaient ~50 ms chacune). Placez le hook
+    dans un processus séparé (par exemple PowerShell avec du C# par `Add-Type`) et renvoyez ses événements par stdout.
+  - Un fil lancé depuis le pont MCP ne tourne que pendant que le fil principal exécute du Python, et les globals du
+    pont sont réaffectées entre deux appels : importez dans la fonction du fil.
+- Une ligne de commande Windows est limitée à 32767 caractères : un long script PowerShell passé par
+  `-EncodedCommand` échoue avec *The filename or extension is too long*. Écrivez-le dans un fichier `.ps1`, lancez-le
+  par `-File`, et lisez les commandes avec `[Console]::In.ReadLine()`.
 
 ### Lire la sélection de l'UI (UI Automation, hors Oil)
 
@@ -1181,6 +1206,26 @@ mais **lancer l'export depuis Python dépend de la licence**.
   spectacle avec de longs clips vidéo) : les Scripts « At Every Update » ne tournent pas pendant ce temps. Un Script
   qui détecte une réouverture du projet par un trou entre deux images ne doit pas prendre cette pause pour une
   réouverture (comparer plutôt le nom du projet).
+- **Exporteurs décrits par Oil** (R15, 18/10/2026) : `Oil.createObject(nomDeClasse)` en construit un (rien n'est
+  exporté) ; `getFriendlyName()` donne le nom affiché dans la fenêtre Export Video, et ses variables
+  (`getNumVariables` / `getVariable(i)` / `getVariableName(i)` / `getFriendlyName()`) donnent ses options dans
+  l'ordre :
+  - conteneurs (`...AVFileExporter`) : Apple QuickTime, Audio Video Interleaved, MPEG-2, MPEG-4, Matroska,
+    Windows Media (`audioExporter`, `videoExporter`), Image Sequence (`audioExporter`, `videoExporter`,
+    `audioFileExporter`), audio seul : Waveform Audio, Audio IFF, Free Lossless Audio Codec ;
+  - vidéo : Apple ProRes (`cpuUsage`, `profile`, `colorSpace`), Hap (`cpuUsage`, `profile`, `numChunks`), Hap (GPU or
+    Squish encoder) (`profile`, `numChunks`, `encoderQuality`), Nvenc H.264 (`bitrate` "40000k", `preset`,
+    `profile`), AMF H.264 (`qualityPreset`), H.264 (best available) (`encodingQuality`), Open H.264, QuickTime
+    MJPEG, QuickTime Animation (`exportAlpha`), Windows Media Video, Image Sequence (`imageFileExporter`) ; toutes ont
+    `timeBase` et `resolution` (réglés par l'export) ;
+  - audio : AAC et AC-3 (`numChannels`, `cpuUsage`, `bitrate`), FLAC, PCM (`componentType`) ; `timeBase` 48000/1.
+  - La fenêtre n'affiche pas toutes les variables (ProRes : Cpu Usage et Profile seulement ; `colorSpace` caché).
+  - Un exporteur **possédé** par une tâche (`task.parameters.settings.fileExporter`, son `videoExporter`...) renvoie
+    le nom de sa *variable* (« File Exporter », « Video Exporter ») : pour le nom du format, utilisez
+    `Oil.createObject(obj.getOilClassName()).getFriendlyName()`.
+- **Un export annulé dans Smode** (menu Tasks) : son `state` passe à `canceled`, puis la tâche disparaît de
+  `engine.tasks.group.tasks`. Une tâche n'a pas de méthode d'annulation (`RootGroupTask` a `cancelable` /
+  `pausable`).
 
 ## Bugs UI connus
 
