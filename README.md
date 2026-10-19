@@ -187,6 +187,22 @@ check `prop.getOilClassName()` before setting an index. Confirmed values:
 | `CuePlayParameters.launchMode` | 0=manual, 1=restartWithActivation, 2=restartWithIntensity, 3=playWithIntensity |
 | `PythonScriptLaunchMode` | 0=manual, 1=atPreload, 2=atActivation, 3=atParameterChange, 4=atEveryUpdate, 5=atDeactivation, 6=atUnload |
 | `FunctionWrapMode` | 0=clamp, 1=repeat, 2=mirroredRepeat |
+| `ProResProfile` (video export) | 0=proxy, 1=lt, 2=standard (default), 3=hq, 4=profile4444, 5=profile4444xq |
+| `ProResColorSpace` | 0=limitedRange601 (default), 1=fullRange601, 2=limitedRange709, 3=fullRange709, 4=limitedRange2020, 5=fullRange2020 |
+| `H264Profile` | 0=baseline, 1=main, 2=high (default) |
+| `NvencPreset` | 0..6 = p1..p7 (default p7) |
+| `AmfQualityPreset` / `H264Quality` | 0=speed, 1=balanced, 2=quality (default) |
+| `FFMPEGHapProfile` | 0=hap (default), 1=hapAlpha, 2=hapQ |
+| `HapProfile` (GPU / Squish encoder) | 0=hap (default), 1=hapAlpha |
+| `HapEncoderQuality` | 0=localGPU, 1=squishLow, 2=squishMedium (default), 3=squishHigh |
+| `MJPEGProfile` | 0=profile422 (default), 1=profile444 |
+| `FFMPEGPCMComponentType` | 0=pcm_alaw, 1=pcm_f32be, 2=pcm_f32le (default), 3=pcm_f64be, 4=pcm_f64le, 5=pcm_mulaw, 6=pcm_s8, 7=pcm_s8_planar, 8=pcm_s16be, 9=pcm_s16be_planar, 10=pcm_s16le, 11=pcm_s16le_planar, 12=pcm_s24be, 13=pcm_s24daud, 14=pcm_s24le, 15=pcm_s24le_planar, 16=pcm_s32be, 17=pcm_s32le, 18=pcm_s32le_planar, 19=pcm_u8, 20=pcm_u16be, 21=pcm_u16le, 22=pcm_u24be, 23=pcm_u24le, 24=pcm_u32be, 25=pcm_u32le, 26=pcm_s64be, 27=pcm_s64le |
+
+**Listing the values of a native enum** (R15, 18/10/2026): an `Enumeration` has no method that lists its values
+(`getNumVariables()` = 0) and `set()` only takes an integer. On a throwaway object (e.g. an exporter created with
+`Oil.createObject`, never added anywhere), `set(i)` for i = 0, 1, 2... then `toString()` gives each value. **Past the
+last value `set()` does not fail**: `toString()` then returns the number itself (`"6"`) — stop at the first value
+that is just its own index. Put the starting index back with `set()` afterwards.
 
 `Oil.CustomEnumeration(("a","b"), 0)`, officially documented, **does not work**
 (`AttributeError`). Fix: declare `x: Oil.createObject("CustomEnumeration")` empty, populate it in
@@ -1236,7 +1252,21 @@ but **launching the export from Python depends on the licence**.
     friendly name of its *variable* ("File Exporter", "Video Exporter"): to get the format name, use
     `Oil.createObject(obj.getOilClassName()).getFriendlyName()`.
 - **An export cancelled in Smode** (Tasks menu): its `state` becomes `canceled`, then the task disappears from
-  `engine.tasks.group.tasks`. A task has no cancel method (`RootGroupTask` has `cancelable` / `pausable`).
+  `engine.tasks.group.tasks`. A task has no cancel method (`RootGroupTask` has `cancelable` / `pausable`, both
+  `false`, and `sequential` = `false`).
+- **Defaults of a freshly created exporter** (R15, 18/10/2026): codec of each container — Apple QuickTime and AVI:
+  Hap; MPEG-4: H.264 (best available); MPEG-2 and Matroska: Open H.264; Windows Media: Windows Media Video; Image
+  Sequence: `ImageSequenceVideoExporter` with `TargaFreeImageFileExporter`; Waveform Audio and Audio IFF: PCM audio;
+  Free Lossless Audio Codec: FLAC audio; `audioExporter` = `null` (no audio) in the video containers. Options:
+  `cpuUsage` 75 %, H.264 / WMV / MJPEG `bitrate` "40000k", AAC / AC-3 `bitrate` "300k", audio `numChannels` 2 and
+  `timeBase` 48000/1, Hap `numChunks` 16, QuickTime Animation `exportAlpha` true; enum defaults in the table of
+  *Enums: never guess the index*.
+- **Variables of a `SceneVideoExportTask`**: `name`, `paused`, `progression`, `progressionString`, `status`
+  (`SuccessStatus`), `state` (`TaskState`), `relatedFile`, `startTimeSinceEpochMs`, `image` (`OwnedColor2dBuffer`),
+  `parameters` (`VideoExportParameters`: `documentToClone`, `rootExportedElement`, `settings`), `renderingContext`
+  (`OfflineRenderingContext`), `previousOnAir`. **The settings of an export started from the window are readable on
+  its task** after the Ok: `task.parameters.settings` (`SceneVideoExportUserSettings`) -> `fileExporter` -> its
+  `audioExporter` / `videoExporter` and their option values (e.g. ProRes `profile`, `colorSpace`, `cpuUsage`).
 
 ## Known UI bugs
 
