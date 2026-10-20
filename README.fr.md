@@ -28,6 +28,7 @@
 - [Système de Parameters / Links / Cues](#système-de-parameters--links--cues)
 - [Timeline (TimelineCue)](#timeline-timelinecue)
 - [Modificateurs, générateurs et masques (aperçu)](#modificateurs-générateurs-et-masques-aperçu)
+- [Placement 2D des calques, masques et exposure](#placement-2d-des-calques-masques-et-exposure-r15-18-20102026)
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
@@ -650,6 +651,37 @@ enums qui exigent `.set()`.
 - Retirer une piste : impossible par clé (voir `Map` plus haut) ; `tc.elementTracks.clear()` puis recréer les
   pistes voulues, ou couper une piste avec `track.activation.set(False)`. Après `clear()`, les wrappers Python
   des anciennes pistes/blocs pointent sur des objets détruits : ne plus jamais y toucher (crash n°6).
+- **Les pistes faites par `createBlock` sont fragiles (R15, 20/10/2026)** : elles marchent, s'affichent dans le
+  panneau Timeline et sont jouées, mais dès qu'une piste est ajoutée **depuis l'interface** (un élément lâché sur
+  cette timeline), toutes les pistes créées par script sont effacées (`elementTracks` ne garde que la nouvelle ;
+  les pistes de paramètres ne bougent pas). Les pistes issues d'un clone (Scene clonée) résistent. Correction
+  testée : une fois les blocs posés, remplacer la timeline par son propre clone —
+  `scene.getVariableByName("mainAnimation").set(scene.mainAnimation.clone())`. Pistes, blocs, fondus, pistes de
+  paramètres et clés sont tous conservés (mêmes nombres, tous les pointeurs faibles résolus) et les pistes
+  résistent ensuite à un lâcher.
+- **Clés par script** : `tc.createKeyframe(paramètre, secondes, False)` → `(ParameterTrack, Keyframe)` pose une clé
+  sur la valeur **actuelle** du paramètre (la régler avant) et crée la piste au besoin. Une clé neuve a
+  `StepKeyframeInterpolator` des deux côtés : régler `kf.inputInterpolator` / `kf.outputInterpolator` via
+  `kf.getVariableByName(...).set(Oil.createObject("LinearKeyframeInterpolator"))` (aussi `Ease...`, `Smooth...`,
+  `Step...` ; `kf.linkInterpolators` = même interpolateur des deux côtés). Un segment utilise l'interpolateur de
+  **sortie** de sa clé de gauche et celui d'**entrée** de sa clé de droite (Ease en sortie = départ lent, Ease en
+  entrée = arrivée lente). `EaseKeyframeInterpolator` a une seule variable, `function` (un `ClassObject`, par défaut
+  `SineFunctionShape` ; `QuadFunctionShape` existe) **sans setter depuis Python**. Reposer une clé au même temps
+  AJOUTE une deuxième clé ; retirer avec `track.function.keyframes.removeAt(i)` / `.clear()`. `kf.position` est
+  gardé exactement (pas arrondi à l'image).
+- La timeline ne pilote ses paramètres **que pendant la lecture ou quand on déplace la tête dans l'UI** :
+  `transport.position.set(t)` depuis Python sur une cue en pause ne réévalue pas les clés (les paramètres gardent
+  la dernière valeur écrite par le script) ; relire un paramètre ensuite ne vérifie donc pas l'animation.
+- **Fondus de bloc** : `block.footage.intensity.fadeIn` / `.fadeOut` sont des `Option(OpacityEaseParameters)` :
+  `.enabled.set(True)`, `.value.length.set(secondes)`, `.value.getVariableByName("shape").set(
+  Oil.createObject("LinearRampFunctionShape" | "SineFunctionShape"))`.
+- Les timecodes d'un bloc vidéo (`footage.position.in` / `out`, `targetLength`) sont écrits à la cadence **du
+  média** : `0:00:02:28` sur un clip à 30 i/s = 2 s + 28/30, pas 28/60 sur un projet à 60 i/s.
+- `scene.clone()` (tout sous-arbre d'Element) donne de nouveaux UUID et remappe les pointeurs faibles de la
+  timeline vers les copies : dans le clone détaché `WeakPointer.get()` renvoie `None`, une fois inséré ils
+  pointent vers les éléments du clone (blocs, fondus et clés suivent).
+- Une Scene faite par `Oil.createObject("Scene")` n'a **pas** de `mainAnimation` (`None`) : lui donner une
+  `TimelineCue` avant de l'insérer.
 
 ## Modificateurs, générateurs et masques (aperçu)
 
@@ -683,6 +715,38 @@ Constats d'usage (R13-R15), classes vues en construisant des scripts :
   bascule d'`activation`, `resetEvent` : sans effet) : il faut supprimer et recréer le modificateur. Le
   retrouver par **nom** (recherche récursive) car son index bouge quand d'autres modificateurs sont ajoutés. Script prêt à l'emploi :
   [smode-streamdiff-ctrl](https://github.com/gyomh/smode-streamdiff-ctrl).
+
+## Placement 2D des calques, masques et exposure (R15, 18-20/10/2026)
+
+Mesuré en reconstruisant des clips pré-rendus à partir de leurs images sources (`TextureLayer` dans une `Compo`) :
+- **Empilement** : `compo.layers[0]` est le calque du **bas** (dessiné en premier), le dernier est au-dessus.
+- `Parametric2dPlacement.position` (`Canvas2dPosition`) : fractions de la compo, **y vers le bas** (0 = haut),
+  l'ancre (centre par défaut) y est posée. `rotation` (`Angle`) se règle en **radians**
+  (`rotation.set(10)` = 572,958°), **positif = sens horaire** à l'écran.
+- `ScaleFactorPlacement2dScale` : **100 % = les pixels propres de la texture** (une image de 2224 px dans une compo
+  de 3840 px en couvre 0,579). `scaleFactor` est `linked` par défaut : `linked.set(False)` avant de régler
+  `width` et `height` séparément. Autre mode d'échelle : `placement.getVariableByName("scale").set(
+  Oil.createObject("SizePlacement2dScale"))`, `size` (`Canvas2dSize`) en fractions de la compo.
+- Un placement Parametric met à l'échelle PUIS tourne : une image tournée puis écrasée (un disque incliné) est
+  impossible avec lui. `Perspective2dPlacement` place la texture par ses **4 coins** : `position` est un
+  `Quadrilateral` avec `a`, `b`, `c`, `d` (haut-gauche, haut-droit, bas-droit, bas-gauche, fractions
+  `Canvas2dPosition`) — tout placement affine ou en perspective. Le mettre avec
+  `renderer.getVariableByName("placement").set(Oil.createObject("Perspective2dPlacement"))`. (Ou imbriquer :
+  tourner dans une sous-compo carrée, écraser le calque de la sous-compo.)
+- `placement.previousMatrix` (`Matrix4d`, vecteurs lignes, fractions de la compo) = la matrice de la dernière image
+  rendue : taille et position réelles à l'écran, une fois le calque dessiné.
+- `Compo.background` (`HsvColor`, `00000000` par défaut) : `background.alpha.set(1.0)` pour un fond noir opaque
+  (comme une vidéo).
+- `GroupTextureRenderer.renderers` : une texture dessinée plusieurs fois, chaque `SingleTextureRenderer` avec son
+  placement, son mode de fusion et son opacité (chacun peut avoir son propre bloc de timeline).
+- **Masque dans l'espace de l'image** : `MaskTextureModifier` dans `generator.modifiers` (générateur image ou
+  Compo), `masks` = `OwnedVector(TextureMask)` : `ShapeTextureMask` (`shape` = `RectangleShapeGenerator` ou
+  `CircleShapeGenerator`, chacun avec son `placement` en fractions de l'image, `feather`, `inverse`,
+  `blendingMode`) ou `GradientTextureMask`. Le construire complet avant de l'ajouter ; son placement peut recevoir
+  des clés (une fenêtre qui suit une image qui bouge).
+- `ExposureTextureModifier` (`exposure` en diaphs, `offset`, `gamma`, `intensity`) dans `generator.modifiers` :
+  des clés d'`exposure` -8 ↔ 0 le long d'un fondu de bloc donnent un fondu plus beau que l'opacité seule.
+- Les PNG 16 bits se chargent sans problème dans `ImageFileTextureGenerator`.
 
 ## Audio réactif
 

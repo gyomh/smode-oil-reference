@@ -29,6 +29,7 @@
 - [Parameters / Links / Cues system](#parameters--links--cues-system)
 - [Timeline (TimelineCue)](#timeline-timelinecue)
 - [Modifiers, generators and masks (overview)](#modifiers-generators-and-masks-overview)
+- [2D layer placement, masks and exposure](#2d-layer-placement-masks-and-exposure-r15-18-20102026)
 - [Audio reactive](#audio-reactive)
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
@@ -663,6 +664,36 @@ script.project.masterScene.layers.append(scene)   # last append
 - Removing one track: impossible per key (see `Map` above); `tc.elementTracks.clear()` then recreate the
   wanted tracks, or switch a track off with `track.activation.set(False)`. After `clear()`, the Python
   wrappers of the old tracks/blocks point to destroyed objects: never touch them again (crash n°6).
+- **Tracks made by `createBlock` are fragile (R15, 20/10/2026)**: they work, show in the Timeline panel and play,
+  but as soon as a track is added **from the interface** (dropping an element on that timeline), every track
+  created by script is wiped (`elementTracks` keeps only the new one; parameter tracks are not touched). Tracks
+  that come from a clone (a cloned Scene) survive. Fix, tested: once the blocks are made, replace the timeline by
+  its own clone — `scene.getVariableByName("mainAnimation").set(scene.mainAnimation.clone())`. Element tracks,
+  blocks, fades, parameter tracks and keys are all kept (same counts, every weak pointer still resolves) and the
+  tracks then survive a drop.
+- **Keys by script**: `tc.createKeyframe(parameter, seconds, False)` → `(ParameterTrack, Keyframe)` keys the
+  parameter's **current** value (set it first) and creates the track if needed. A new key has
+  `StepKeyframeInterpolator` on both sides: set `kf.inputInterpolator` / `kf.outputInterpolator` through
+  `kf.getVariableByName(...).set(Oil.createObject("LinearKeyframeInterpolator"))` (also `Ease...`, `Smooth...`,
+  `Step...`; `kf.linkInterpolators` = same on both sides). A segment uses the **output** interpolator of its left
+  key and the **input** interpolator of its right key (Ease on the output = slow departure, Ease on the input =
+  slow arrival). `EaseKeyframeInterpolator` has one variable, `function` (a `ClassObject`, default
+  `SineFunctionShape`; `QuadFunctionShape` exists) that has **no setter from Python**. Keying again at the same
+  time ADDS a second key; remove keys with `track.function.keyframes.removeAt(i)` / `.clear()`. `kf.position` is
+  kept exactly (not rounded to a frame).
+- The timeline drives its parameters **only while it plays or when the playhead is moved in the UI**:
+  `transport.position.set(t)` from Python on a paused cue does not re-evaluate the keys (parameters keep the last
+  value written by the script), so reading a parameter after it is not a check of the animation.
+- **Block fades**: `block.footage.intensity.fadeIn` / `.fadeOut` are `Option(OpacityEaseParameters)`:
+  `.enabled.set(True)`, `.value.length.set(seconds)`, `.value.getVariableByName("shape").set(
+  Oil.createObject("LinearRampFunctionShape" | "SineFunctionShape"))`.
+- Timecodes of a video block (`footage.position.in` / `out`, `targetLength`) are written in the **media's** frame
+  rate: `0:00:02:28` on a 30 fps clip = 2 s + 28/30, not 28/60 on a 60 fps project.
+- `scene.clone()` (any Element subtree) gives new UUIDs and remaps the timeline's weak pointers to the copies: in
+  the detached clone `WeakPointer.get()` returns `None`, once inserted they resolve to the clone's own elements
+  (blocks, fades and keys come along).
+- A Scene made with `Oil.createObject("Scene")` has **no** `mainAnimation` (`None`): set a
+  `TimelineCue` before inserting it.
 
 ## Modifiers, generators and masks (overview)
 
@@ -698,6 +729,37 @@ Usage findings (R13-R15), classes seen while building scripts:
   modifier has to be deleted and recreated. Find it by **name** (recursive search) because its
   index moves when other modifiers are added. Ready-made Script:
   [smode-streamdiff-ctrl](https://github.com/gyomh/smode-streamdiff-ctrl).
+
+## 2D layer placement, masks and exposure (R15, 18-20/10/2026)
+
+Measured while rebuilding pre-rendered clips from their source images (`TextureLayer` in a `Compo`):
+- **Stacking**: `compo.layers[0]` is the **bottom** layer (drawn first), the last one is on top.
+- `Parametric2dPlacement.position` (`Canvas2dPosition`): fractions of the compo, **y down** (0 = top), the
+  anchor (default centre) is placed there. `rotation` (`Angle`) is set in **radians**
+  (`rotation.set(10)` = 572.958°), **positive = clockwise** on screen.
+- `ScaleFactorPlacement2dScale`: **100 % = the texture's own pixels** (a 2224 px wide image in a 3840 px compo
+  covers 0.579 of it). `scaleFactor` is `linked` by default: `linked.set(False)` before setting `width` and
+  `height` apart. Another scale mode: `placement.getVariableByName("scale").set(Oil.createObject(
+  "SizePlacement2dScale"))`, `size` (`Canvas2dSize`) in fractions of the compo.
+- A Parametric placement scales THEN rotates: an image rotated then squashed (a tilted disc) cannot be made with
+  it. `Perspective2dPlacement` places the texture by its **4 corners**: `position` is a `Quadrilateral` with `a`,
+  `b`, `c`, `d` (top-left, top-right, bottom-right, bottom-left, `Canvas2dPosition` fractions) — any affine or
+  perspective placement. Swap it in with `renderer.getVariableByName("placement").set(Oil.createObject(
+  "Perspective2dPlacement"))`. (Or nest: rotate inside a square sub-compo, squash the sub-compo layer.)
+- `placement.previousMatrix` (`Matrix4d`, row vectors, compo fractions) = the matrix of the last frame
+  rendered: the real size and position on screen, once the layer has been drawn.
+- `Compo.background` (`HsvColor`, `00000000` by default): `background.alpha.set(1.0)` for an opaque black
+  background (like a video).
+- `GroupTextureRenderer.renderers`: one texture drawn several times, each `SingleTextureRenderer` with its own
+  placement, blend and opacity (each can have its own timeline block).
+- **Mask in the image's own space**: `MaskTextureModifier` in `generator.modifiers` (image generator or Compo),
+  `masks` = `OwnedVector(TextureMask)`: `ShapeTextureMask` (`shape` = `RectangleShapeGenerator` or
+  `CircleShapeGenerator`, each with its own `placement` in fractions of the image, `feather`, `inverse`,
+  `blendingMode`) or `GradientTextureMask`. Build it complete before appending it; its placement can be keyed
+  (a window that follows a moving image).
+- `ExposureTextureModifier` (`exposure` in stops, `offset`, `gamma`, `intensity`) in `generator.modifiers`: keying
+  `exposure` -8 ↔ 0 along a block fade gives a nicer fade than opacity alone.
+- 16-bit PNG files load fine in `ImageFileTextureGenerator`.
 
 ## Audio reactive
 
