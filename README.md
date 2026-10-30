@@ -689,6 +689,15 @@ script.project.masterScene.layers.append(scene)   # last append
   Oil.createObject("LinearRampFunctionShape" | "SineFunctionShape"))`.
 - Timecodes of a video block (`footage.position.in` / `out`, `targetLength`) are written in the **media's** frame
   rate: `0:00:02:28` on a 30 fps clip = 2 s + 28/30, not 28/60 on a 60 fps project.
+- **Video block made by `createBlock`** (R15, 30/10/2026): `block.footage.position.automateTransport` is `False`, so the
+  video stays on its first frame while the playhead moves ("Automate Transport" in the block's Footage - Position);
+  set it to `True` and the video follows the playhead from the start of the block. The block length read back is the
+  media's length, not the one written with `length.set()` (seen after cloning the timeline).
+- **Activation of an Element or a track**: `obj.activation.set(False)` / `.set(True)`. The value is read as a
+  **boolean**: `set(2)` (the "inactive" value) or `set(3)` switches it ON. Read back, `ActivationState` is 0 = active,
+  1 = activationRequested (will be active with its parent, e.g. layers of an inactive scene), 2 = inactive. A layer
+  switched off this way stays off when its parent compo is activated by a block; a parameter track whose keys were
+  cleared can be switched off the same way.
 - `scene.clone()` (any Element subtree) gives new UUIDs and remaps the timeline's weak pointers to the copies: in
   the detached clone `WeakPointer.get()` returns `None`, once inserted they resolve to the clone's own elements
   (blocks, fades and keys come along).
@@ -734,6 +743,11 @@ Usage findings (R13-R15), classes seen while building scripts:
 
 Measured while rebuilding pre-rendered clips from their source images (`TextureLayer` in a `Compo`):
 - **Stacking**: `compo.layers[0]` is the **bottom** layer (drawn first), the last one is on top.
+- **Reordering image layers without `removeAt`** (30/10/2026): swap their files,
+  `layer.generator.file.path.set("<Media Directory name>/<folder>/<file>.png")` (same form as `file.path.get()`); no
+  object is destroyed. Timeline tracks belong to the layer object, not to the file: apply the keys and blocks again
+  after a swap. Adding a layer to a compo: `new = layer.clone()`, configure it, `compo.layers.insert(i, new)` (no
+  problem seen, in a scene that was not active).
 - `Parametric2dPlacement.position` (`Canvas2dPosition`): fractions of the compo, **y down** (0 = top), the
   anchor (default centre) is placed there. `rotation` (`Angle`) is set in **radians**
   (`rotation.set(10)` = 572.958°), **positive = clockwise** on screen.

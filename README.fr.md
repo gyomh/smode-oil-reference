@@ -677,6 +677,16 @@ enums qui exigent `.set()`.
   Oil.createObject("LinearRampFunctionShape" | "SineFunctionShape"))`.
 - Les timecodes d'un bloc vidéo (`footage.position.in` / `out`, `targetLength`) sont écrits à la cadence **du
   média** : `0:00:02:28` sur un clip à 30 i/s = 2 s + 28/30, pas 28/60 sur un projet à 60 i/s.
+- **Bloc vidéo créé par `createBlock`** (R15, 30/10/2026) : `block.footage.position.automateTransport` vaut `False`, la
+  vidéo reste donc figée sur sa première image quand la tête de lecture avance (« Automate Transport » dans
+  Footage - Position du bloc) ; le passer à `True` et la vidéo suit la tête de lecture depuis le début du bloc. La
+  longueur du bloc relue est celle du média, pas celle écrite avec `length.set()` (constaté après le clonage de la
+  timeline).
+- **Activation d'un Element ou d'une piste** : `obj.activation.set(False)` / `.set(True)`. La valeur est lue comme un
+  **booléen** : `set(2)` (la valeur « inactive ») ou `set(3)` l'ALLUME. En lecture, `ActivationState` vaut 0 = active,
+  1 = activationRequested (sera actif avec son parent, ex. calques d'une scène inactive), 2 = inactive. Un calque
+  éteint ainsi reste éteint quand sa compo parente est activée par un bloc ; une piste de paramètre dont les clés ont
+  été effacées s'éteint de la même façon.
 - `scene.clone()` (tout sous-arbre d'Element) donne de nouveaux UUID et remappe les pointeurs faibles de la
   timeline vers les copies : dans le clone détaché `WeakPointer.get()` renvoie `None`, une fois inséré ils
   pointent vers les éléments du clone (blocs, fondus et clés suivent).
@@ -720,6 +730,11 @@ Constats d'usage (R13-R15), classes vues en construisant des scripts :
 
 Mesuré en reconstruisant des clips pré-rendus à partir de leurs images sources (`TextureLayer` dans une `Compo`) :
 - **Empilement** : `compo.layers[0]` est le calque du **bas** (dessiné en premier), le dernier est au-dessus.
+- **Réordonner des calques image sans `removeAt`** (30/10/2026) : échanger leurs fichiers,
+  `layer.generator.file.path.set("<nom du Media Directory>/<dossier>/<fichier>.png")` (même forme que
+  `file.path.get()`) ; aucun objet n'est détruit. Les pistes de timeline appartiennent à l'objet calque, pas au
+  fichier : réappliquer clés et blocs après un échange. Ajouter un calque à une compo : `new = layer.clone()`, le
+  régler, `compo.layers.insert(i, new)` (aucun souci constaté, dans une scène non active).
 - `Parametric2dPlacement.position` (`Canvas2dPosition`) : fractions de la compo, **y vers le bas** (0 = haut),
   l'ancre (centre par défaut) y est posée. `rotation` (`Angle`) se règle en **radians**
   (`rotation.set(10)` = 572,958°), **positif = sens horaire** à l'écran.
