@@ -30,6 +30,7 @@
 - [Timeline (TimelineCue)](#timeline-timelinecue)
 - [Modifiers, generators and masks (overview)](#modifiers-generators-and-masks-overview)
 - [2D layer placement, masks and exposure](#2d-layer-placement-masks-and-exposure-r15-18-20102026)
+- [2D shapes and groups: ShapeLayer, GroupLayer, 2D rigs](#2d-shapes-and-groups-shapelayer-grouplayer-2d-rigs-r15-30102026)
 - [Audio reactive](#audio-reactive)
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
@@ -403,6 +404,51 @@ rather than fixing the existing objects in place.
   evaluation); a layer outside the group does not follow its transformation unless the script
   applies it.
 - World matrix: `layer.worldMatrix` → `m.x.x.get()`...; rotation = normalised columns.
+- **Pivots and sizes (R15, 30/10/2026)**: `CapsuleGeometryGenerator.height` is the **total** length tip to tip and
+  the pivot is the bottom tip (so cap centres at two joints a, b: `height = |ab| + 2r`, position = a - r);
+  `CylinderGeometryGenerator` (`radius` = `Size2d`, elliptical) pivot = centre of the bottom cap; `PlaneGeometryGenerator`
+  is born lying in XZ (a ground plane as is); a capsule turned along X: `orientation.z = -90°`. `placement.size`
+  (`Size3d`, `linked` False) scales a layer per axis (ellipsoid from a sphere).
+- **Rig with `Group3dLayer`** (FK): a `Group3dLayer` has `layers` and a `placement`; with `anchor = position = joint`
+  its `orientation` turns its children around the joint (checked). Nested groups = hip > knee > ankle > toes.
+  `RepeatGeometryModifier` (`count`, `placement` = offset applied per copy) in `generator.modifiers` repeats a
+  geometry (fence posts, trees every period) in one layer. **The offset is in the geometry's own space, before the
+  layer's `placement.size`**: on a layer scaled x 1.7 an offset D gives copies 1.7·D apart (it broke a seamless loop:
+  hedges jumped at the loop point); use `D / size.x`.
+- **Rolling ground that loops**: a displacement noise is not periodic, so it jumps at the loop point. Flattened grass
+  ellipsoids (sphere radius 1 + `placement.size` = (rx, ry, rz), partly buried), one set per tile of the travel D,
+  repeated every D and wider than D, overlap into continuous ridges that are exactly periodic; objects are set on them
+  with the analytic height (max over the ellipsoids and their repeats).
+- **Writing values**: a `Percentage` / light `intensity` takes a **fraction** (`intensity = 30.0` gave 3000 %, an all-white
+  render); several fields of objects already in the tree (camera placement, light bounding box) ignore a direct `=`
+  assignment silently: use `.set()`. Float fields refuse Python `int` (`TypeError ... expected Real or float`).
+
+### PBR materials and procedural textures (R15, 30/10/2026)
+
+- `PBRSurfaceGeometryRenderer` (assigned directly to `layer.renderer`, one renderer object per layer: never share it):
+  channels `albedo`, `metallic`, `roughness`, `normal`, `emissive`, `occlusion` (+ `metallicFactor`,
+  `roughnessFactor`, `normalLevel`, `side`, `depthBuffer`), each an `OwnedPointer(Colorizer3d)`, by default a
+  `Uniform3dColorizer` (`.color`). **Default roughness = black (0 = mirror)**: always set it. Also exist
+  `SubstancePBRSurfaceGeometryRenderer` / `SbsarFileTextureGenerator` (Substance), `TextureLayer3dColorizer`,
+  `Gradient3dColorizer` (`gradient`, `shape`).
+- Texture on a channel: `col = TextureLayer3dColorizer()`, `col.layer = <any TextureGenerator>`,
+  `col.transform` (`Parametric2dPlacement`, `scale.scaleFactor` = fraction -> repeats `1/fraction` times),
+  `mappingMode` (0 uv, 1 xy, 2 xz, 3 yz, 4 custom), `wrapModes.top/bottom/left/right`
+  (`FrameWrapMode`: 0 transparent, 1 black, 2 white, 3 repeat, **4 mirroredRepeat** = any texture tiles without
+  seam, 5 edge, 6 blurredEdge); then `renderer.getVariableByName("albedo").set(col)`.
+- Procedural generators: `NoiseTextureGenerator` (`gradient` = `BitoneColorFunction` `beginColor` / `endColor` /
+  `midPoint`, `scale` = feature size in px, `octaves`, `seed`, `resolution` Custom), `WoodTextureGenerator` (its
+  default gradient **ends transparent**: set both colours), `MarbleTextureGenerator`, `BrickTextureGenerator`,
+  `LinearGradientTextureGenerator` (`segment.begin/end`), `WhiteNoiseTextureGenerator`. No `DomainWarpingNoise` class.
+- **UV axes of a ground plane**: on a `PlaneGeometryGenerator` (lying in XZ) the colorizer's
+  `scaleFactor.width` repeats along **Z (the plane's `size.height`)** and `scaleFactor.height` along X: swap them,
+  otherwise the texture is streaked along the strip.
+- **Normal maps from noise**: `NoiseTextureGenerator` (black -> white) with a `DepthToNormalTextureModifier`
+  (`softFactor`) in its `modifiers`, in a `TextureLayer3dColorizer` set on the material's `normal` +
+  `normalLevel`: real relief on grass, dirt, bark, foliage, fabric (keep ~0.25-0.3 on clothes, more looks knitted).
+- Organic shapes: `GeosphereGeometryGenerator` (`subdivision`) + `PositionNoiseGeometryModifier` (`strength`
+  `Size3d`, `noise` = `ProcessedNoiseFunction`: `scale`, `octaves`, `seed.value`) = lumpy foliage clumps with real
+  light/shadow detail. `TreeGeometryGenerator` is not instantiable.
 
 ## 3D lights (R15, 07/10/2026)
 
@@ -428,6 +474,16 @@ rather than fixing the existing objects in place.
 - Intensity / colour / activation can be modified after the `append` without trouble (in-place
   update of an existing rig from a Script). Complete example: the
   [smode-light-setup](https://github.com/gyomh/smode-light-setup) repository.
+- **Directional light (R15, 30/10/2026)**: aiming it like a spot (position + `target.targetObject` + `axis` zNeg) is
+  the reliable way to get the wanted direction (Euler angles alone were ambiguous). Shadows are on by default
+  (`shadowParameters`: `intensity`, `bias` default 0.1 m = shadows detached, `softRadius`, `softNumSamples`,
+  `resolution` 2048). `sceneBoundingBox.automatic` = the whole scene: on a 300 m world the character's shadow
+  disappears. Manual box: `automatic` False, `display` False, and **`center` / `size` are in the light's frame**
+  (x / y across the beam, z along it: the target is at `center.z = -distance`); a box set in world coordinates
+  puts the whole scene in shadow (dark render).
+- An `AmbientLight` adds the same colour to every surface: above ~0.15 it washes the image out (grey haze, no
+  contrast). Better: a strong warm sun with shadows + 2 weak cool directional "sky" lights without shadows
+  (`shadowParameters.intensity = 0`) + a weak ground bounce from below + ambient ~0.1.
 
 ## Lock and activation (ActivationState)
 
@@ -476,6 +532,37 @@ rather than fixing the existing objects in place.
 
 ## Compo camera (R15)
 
+- **Camera of a compo (R15, 30/10/2026)**: editing `compo.defaultCamera` changed nothing on screen. What works: an
+  `AffineCamera` with `placement = TargetOrientationDistance3dPlacement` (`target`, `orientation`, `distance`) and
+  `frustum = FieldOfViewPerspectiveFrustum`, appended to `compo.cameras`, then `cam.makeCurrent.trig()` **in a later
+  bridge call** (in the creation call `currentCamera` stays `None`). In the frustum the **horizontal** angle is the
+  master (setting `vertical` was recomputed from it): vertical = 2·atan(tan(h/2) / aspect).
+- Post-processing on `compo.modifiers`: `DepthOfFieldTextureModifier` ("legacy"; `focusParameters.automatic` False,
+  `distance`, `focalRegion`, `near/farTransition`; `farBlur.radius` in px: ~20 for a photographic background blur, a
+  small light halo appears around sharp edges), `AmbientOcclusionTextureModifier` (`radius`, `intensity`,
+  `complexity`: low complexity = grainy), `ExposureTextureModifier`. No bloom, motion blur or fog class.
+- A 2D layer (gradient sky) placed before the 3D layers is drawn behind them.
+- **Photographic pipeline**: compo modifiers process the whole compo, so a grain layer on top would be blurred by the
+  depth of field. Put the 3D scene in a sub-compo (`TextureLayer` "shot" whose generator is a `Compo` with its own
+  `cameras`, lights, layers and lens modifiers AO / DOF / exposure; its camera made current with
+  `sub.cameras[0].makeCurrent.trig()`), then above it in the main compo a vignette (`RadialGradientTextureGenerator`,
+  transparent -> black alpha ~0.35) and grain (`WhiteNoiseTextureGenerator`, `blendingMode` overlay, opacity ~0.07),
+  and the grade on the main compo (`TemperatureTextureModifier` red 0.54 / blue 0.46, `ChromaticAberrationTextureModifier`
+  `distortion` ~0.04). The main timeline still drives keys and blocks inside the sub-compo.
+- `BlendingMode` values: 0 passThrough, 1 replace, 2 normal, 3 dissolve, 4 darken, 5 multiply, 6 colorBurn,
+  7 linearBurn, 8 darkerColor, 9 lighten, 10 screen, 11 colorDodge, 12 linearDodge, 13 lighterColor, 14 overlay,
+  15 softLight, 16 hardLight, 17 vividLight, 18 linearLight, 19 pinLight, 20 hardMix, 21 difference, 22 exclusion,
+  23 subtract, 24 divide, 25 hue, 26 saturation, 27 color, 28 luminosity, 29 alpha.
+- `BrightnessContrastGammaTextureModifier` with `contrast` 0.12 on this HDR 3D render gave a black image with a few
+  saturated spots: left out.
+- **3D cost (RTX 4090 Laptop, 1080p)**: a directional light's shadows ≈ 6 ms (the shadow pass of all the geometry;
+  `softNumSamples` 8 -> 4 and resolution 2048 -> 1024 changed nothing), the world's noisy geospheres ≈ 5.5 ms, DOF
+  ≈ 1.4 ms, AO ≈ 0.6 ms; 256 vs 1024 px procedural textures: no measurable difference. Repeat motifs only as far
+  as the camera sees (copies = view width at that depth + the travel, not a fixed count).
+- A heavy build call (dozens of materials) can exceed the bridge's reply timeout ("Error executing tool"): the code
+  still finishes in Smode; check the result in a next call before running it again.
+- A `WeakPointer` cannot be emptied from Python (`set(None)` and `reset()` without its callback are refused).
+
 - `compo.currentCamera.get()` (the current camera, the one from the elements list) can be
   **different** from `compo.defaultCamera` (the internal camera of a fresh Compo). Read
   `currentCamera` first.
@@ -517,7 +604,9 @@ Smode process + `Graphics.CopyFromScreen` on that rectangle only (never the whol
 reading the PNG. Crop on the viewport to read an icon; the status bar at the bottom of the window
 gives the rendering errors ("No direct pointer", "Unspecified reference", "No Triangles...").
 Beware: if the Smode window sits on another screen with other windows over it, the capture will
-include them.
+include them. `Process.MainWindowHandle` of Smode can be a 1x1 window: enumerate the process's visible top-level
+windows (`EnumWindows` + `GetWindowThreadProcessId`) and take the largest one. To check an animation, grab a few crops
+of the viewport ~0.1 s apart while the timeline plays and lay them out in one contact sheet.
 
 ## Nested Scene (nested Scene layer)
 
@@ -703,6 +792,28 @@ script.project.masterScene.layers.append(scene)   # last append
   (blocks, fades and keys come along).
 - A Scene made with `Oil.createObject("Scene")` has **no** `mainAnimation` (`None`): set a
   `TimelineCue` before inserting it.
+- **Looping a timeline**: `tc.parameters.looping.set(True)` (`CuePlayParameters`: also `playMode`, `speed`, `in`/`out`).
+- **Cyclic animation (walk cycle, R15, 30/10/2026)**: a `KeyframeFunction` has no repeat/cycle option (only `keyframes` and
+  its buffer). Key ONE cycle in its own `TimelineCue` (`transport.length` = cycle length, `parameters.looping` = True) put in
+  an `AnimationBank` (`bank.animations.append(cue)`, the bank in the `tools` of a layer/group/compo), then
+  `tc.createBlock(cue)` on the main timeline (`createBlock` also takes a cue, not only layers): block `length` = the whole
+  timeline, `block.footage.position.automateTransport.set(True)` and `.looping.set(True)`. The cue replays on the main
+  timeline's clock (deterministic, loops with it). `cue.createKeyframe(...)` works on such a cue like on the main timeline.
+  Applying the clone fix above afterwards keeps the block working.
+- Before giving a key different input/output interpolators, `kf.linkInterpolators.set(False)`.
+- **Interpolators, exact curves (measured frame by frame, R15, 30/10/2026)**: only `Linear`, `Ease`, `Smooth` and `Step`
+  `KeyframeInterpolator` exist (no Bezier/tangent handles). With u = 0..1 across a segment:
+  Ease out + Ease in = `(1 - cos(pi*u)) / 2`; Ease out + Linear in = `1 - cos(pi*u/2)`; Linear out + Ease in = `sin(pi*u/2)`.
+  **Smooth = uniform Catmull-Rom per segment**: Hermite with tangents (per unit of u) `(p[i+1] - p[i-1]) / 2`, the same
+  value used in both segments around a key, so the **speed is continuous only when keys are evenly spaced** (uneven
+  spacing = speed jump at the key). First/last key: one-sided tangent `p1 - p0` / `pn - pn-1`, which ignores what comes
+  next: a looping cycle keyed from 0 to its length gets a speed jump at every loop.
+  Seamless smooth loop: key the cycle on an even grid with **one extra key on each side** (cycle from OFF to OFF + length,
+  cue length = length + 2 * OFF), and loop only the cycle with the block's `footage.position` `in` / `out`
+  (`Option(Seconds)`: `getVariableByName("in").enabled.set(True)`, `.value.set(OFF)`, same for `out`) + `looping`. Checked:
+  the cue loops inside [in, out]. `KeyframeFunction.bufferData` stays empty (not a sampled curve).
+- After `compo.getVariableByName("mainAnimation").set(clone)`, `transport.play.trig()` **in the same bridge call** does not
+  start the new timeline: play it in a later call.
 
 ## Modifiers, generators and masks (overview)
 
@@ -774,6 +885,46 @@ Measured while rebuilding pre-rendered clips from their source images (`TextureL
 - `ExposureTextureModifier` (`exposure` in stops, `offset`, `gamma`, `intensity`) in `generator.modifiers`: keying
   `exposure` -8 ↔ 0 along a block fade gives a nicer fade than opacity alone.
 - 16-bit PNG files load fine in `ImageFileTextureGenerator`.
+
+## 2D shapes and groups: ShapeLayer, GroupLayer, 2D rigs (R15, 30/10/2026)
+
+Found while building a side-view walking character out of rectangles and circles:
+- **`ShapeLayer`** = `generator` (`OwnedPointer(ShapeGenerator)`, null until assigned) + `renderer` (`DefaultShapeRenderer`:
+  `fill` / `stroke` with `.enabled` + `.color` `HsvColor`, `stroke.thickness`, `opacity`, `blendingMode`, `placement`).
+  Generators: `RectangleShapeGenerator`, `CircleShapeGenerator` (`RoundedRectangle...`, `Ellipse...`, `Polygon...` do not
+  exist). Size and position of the shape = **`generator.placement`** (`Parametric2dPlacement` with a `SizePlacement2dScale`):
+  `scale.size.width/height` are fractions of the compo's width/height (`linked.set(False)` first), so a circle with
+  `width != height` in pixels is an ellipse. `edgeLength` goes from 0 to 2000 on insertion.
+  **The size is reset to 500 px a frame or two after insertion**, even when set before the append, and re-applying it in the
+  same bridge call is not enough: re-apply it in a **later** call (see "Known UI bugs").
+- **`GroupLayer`** (no `Group2dLayer`) = the 2D group: `layers`, `tools`, `placement` (`Parametric2dPlacement`, scale
+  `ScaleFactorPlacement2dScale`). Its children keep coordinates in fractions of the compo. Rotation turns around the
+  **anchor**: with `anchor = position = (jx, jy)` the group renders unchanged and `rotation` turns it around the point
+  (jx, jy), with no distortion from the compo's aspect ratio. Nested groups give forward kinematics (hip > knee > ankle):
+  build every part in its rest pose and put each joint's pivot on its group.
+- A translated group still draws children placed **outside** the 0-1 frame (no clipping): a group holding several copies
+  of a decor tile, moved by exactly a whole number of tiles, scrolls in a seamless loop.
+- `compo.layers[0]` is the bottom layer, and the same inside a `GroupLayer`.
+- A solid layer = `TextureLayer` + `UniformTextureGenerator` (fills the compo). Sized rectangle: on `renderer.placement`,
+  `getVariableByName("scale").set(Oil.createObject("SizePlacement2dScale"))`, then `scale.size` in compo fractions
+  (`linked` False first) and `position`; not reset after insertion, unlike shapes. Rotated, its edges look like a shape's.
+- `GroupShapeGenerator` (`shapes` vector, each sub-shape with its own `placement`) also gets its sub-shapes reset to
+  500 px after insertion. `edgeLength` is recomputed by the engine (a written value is overwritten a few frames later).
+
+### Render cost (R15, 30/10/2026, RTX 4090 Laptop, compo 1920x1080 at 60 fps)
+
+Measured by toggling layers while the timeline plays (`engine.status.frame.rate.toString()` = `"35.09 ms / 28.5"`,
+`frame.deltaTime` = frames skipped per render): **each shape costs ~0.14 ms whatever its size**, also when it is a
+sub-shape of a `GroupShapeGenerator` (merging does not help) or drawn in a small sub-compo; a solid layer costs
+~0.03-0.07 ms; a `GroupLayer` almost nothing. With 160 shapes the frame went to 35 ms (30 fps, choppy playback).
+- When nothing is animated (timeline paused) nothing is re-rendered: 60 fps whatever the content. While playing, a static
+  sub-compo is still rendered every frame; a `FreezeTextureModifier` on it does not stop that. `Compo.baker`
+  (`CompoBaker`, `SceneBaker`) is not a texture cache.
+- Fix that worked (160 shapes -> 30 shapes + 30 solids, 35 ms -> 16.7 ms): rectangles as solid layers, and every
+  repeated motif drawn ONCE in a tile `Compo` (custom resolution = tile size) shown N times by a
+  `GroupTextureRenderer` on its `TextureLayer` (`renderers.append(SingleTextureRenderer)`, each with its own
+  `placement`; default scale = 100 % of the texture's pixels). Shapes crossing a tile edge are repeated on the other
+  side (shift of one tile) so the copies join.
 
 ## Audio reactive
 
@@ -1414,6 +1565,9 @@ but **launching the export from Python depends on the licence**.
   fully installed in the live scene (seen twice, always towards the equivalent of
   500px/resolution). Systematic fix: re-apply these values in a "POST-INSERTION FIXES" block
   executed AFTER `parentElement.layers.append(...)`.
+  **Same bug on `ShapeLayer` generators** (`RectangleShapeGenerator` / `CircleShapeGenerator`, R15, 30/10/2026): every
+  new shape is back to 500 px a frame or two after insertion, so a fix in the same bridge call is overwritten — re-apply
+  the sizes (keep them in a dict keyed by label) in a **later** bridge call.
 - **No way to override the displayed label** of a Script parameter — the label is auto-derived
   from the Python variable name (camelCase → Title Case). No `.label`/`setFriendlyName()` in the
   Python SDK for that; the only lever is renaming the variable.
@@ -1463,6 +1617,16 @@ A sixth crash (R15, 11/10/2026), through the MCP bridge:
 Rule: never touch a wrapper whose object may have been destroyed (cleared vector/map, removed element); in
 the bridge, work inside functions (local variables) and `del` the module-level ones, never scan `globals()`.
 
+A seventh crash (R15, 30/10/2026), through the MCP bridge, no log nor dump:
+7. Rebuilding a whole 3D compo in one call (`layers.clear()` of ~40 layers incl. lights whose `target.targetObject`
+   pointed at a group of the same tree, `modifiers.clear()`, `cameras.clear()` of the **current** camera, then
+   re-creation) worked three times, then killed Smode the fourth time. SmodeLauncher restarted Smode, which
+   reopened **another project** (the last one of the previous session), not the document being edited.
+Rule (to confirm): for a 3D rebuild, reset the lights' targets and make another camera current in a first call,
+clear in a second call, rebuild in a third; or update the existing objects instead of rebuilding.
+Note: changes made by script do not mark the document as modified (no `*`, `hasUnsavedChanges` False), so a Ctrl+S
+saves them without warning.
+
 After a crash, Smode may **reopen an old save**: the automatic saves are in
 `Documents\Smode Files\<project>.project\.versions` (every 5 min); a text search in the file
 (`IconFleche`, the name of an object) tells which one holds the wanted work.
@@ -1476,6 +1640,20 @@ Update"** (not Manual) starts a local HTTP server, which drops the requests into
 directly in the HTTP thread causes a total deadlock, confirmed through `netstat -ano`,
 connections stuck in `CLOSE_WAIT`). `_EXEC_NAMESPACE = globals()` shared between all the calls →
 persistent REPL-like behaviour, variables stay available from one call to the next.
+
+**Bridge in a Compo document** (R15, 30/10/2026): when the open document is a `.compo` (not a project), `script.project`
+raises `AttributeError`; `script.parentElement` is the Compo and `script.document` a `Document(TextureGenerator)`. A Compo
+document is evaluated on its own (no Content Map target needed for its timeline and shapes to play). To run a long build
+script kept on disk without filling the shared namespace: `ns = {"Oil": Oil, "script": script};
+exec(open(path, encoding="utf-8").read(), ns)`.
+
+**Reading values every frame from the bridge** (R15, 30/10/2026): replacing `_processQueue` in the namespace had no
+effect (never called), but the request queue object persists and its `empty()` is called every frame: swap
+`_SMODE_MCP_REQUEST_QUEUE` for a proxy whose `empty()` first runs a sampler (try/except) then delegates
+(`__getattr__` -> the real queue). Samples (e.g. timeline position + parameters) are taken on the main thread at the
+render rate, in sync with the timeline (no frame offset). Put the real queue back afterwards and drop the wrappers of
+sampled objects before deleting them. Same trick for an automatic benchmark (toggle a layer, wait ~25 frames, average
+`frame.rate` over ~40 frames).
 
 **Security of an HTTP server launched from a Script** (found while writing
 [smode-server-http](https://github.com/gyomh/smode-server-http)): listening on `127.0.0.1` is not
