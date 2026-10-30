@@ -780,8 +780,23 @@ Measured while rebuilding pre-rendered clips from their source images (`TextureL
 `AudioSpectrumLinkSource` — native class to continuously inject the intensity of a frequency band
 into any parameter through a Link.
 - `.extractor` (`AudioSpectrumExtractor`): `.audioChannel` (`WeakPointer(AudioDeviceChannel)`,
-  `.set(channelObj)`), `.frequencyInterval`/`.amplitudeInterval` (`Interval(Percentage)` with
+  `.set(channelObj)`), `.frequencyInterval`/`.amplitudeInterval` (`Interval` with
   `.begin`/`.end`/`.center`/`.size`).
+- **Units changed in R15 (30/10/2026)**: `frequencyInterval` is `Interval(Frequency)` in **Hz** and
+  `amplitudeInterval` is `Interval(Decibel)` in **dB** (both were `Percentage` in R13). Old percentage
+  values are silently clamped (22.05 Hz minimum, 0 dB) -> zero-width intervals, the output stays at 0
+  and the UI shows the Links as "Disconnected" although they are healthy. Fresh extractor defaults:
+  330-550 Hz, -40-0 dB. Frequency: min 22.05 Hz, no hard max. Amplitude: clamped to [-50, 0] dB.
+  `end >= begin` is enforced: set `begin` to its floor, then `end`, then `begin`.
+- R15 `AudioSpectrumLinkSource` attributes: `method` (`AudioSpectrumExtractorMethod`: 0 mean, 1 max,
+  2 smoothMax — `mean` flattens wide bands), `exponent`, `channel`, `outputChannel`, `outputValue`
+  (readable output, handy to debug). Exposed parameters in natural units:
+  `Parameter(Frequency)`, `Parameter(Decibel)` (no `Oil.Frequency`/`Oil.Decibel` declaration types:
+  use `Oil.PositiveReal`/`Oil.Real` in a Script header).
+- Channel spectrum: `inputChannels[i].spectrum` (`AffineTransformedSampledRealFunction`,
+  `inputScaling` = Hz per bin, e.g. 43.15 = 44100/1024; `outputScaling` 50 / `outputOffset` -50 = 0..1
+  -> -50..0 dB). Level: `channel.vuMeter.intensity.get()` (`PPMVuMeter`). The device must have
+  `computeWaveformAndSpectrum` = True.
 - Audio devices: `engine.devices.devices`, each `JuceAudioDevice` has `.inputChannels`
   (e.g. "Left"/"Right" in DirectSound, 8 named channels in ASIO Voicemeeter).
   Examples: [smode-vizualiser](https://github.com/gyomh/smode-vizualiser),

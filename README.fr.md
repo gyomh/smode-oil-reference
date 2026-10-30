@@ -768,8 +768,24 @@ Mesuré en reconstruisant des clips pré-rendus à partir de leurs images source
 `AudioSpectrumLinkSource` — classe native pour injecter en continu l'intensité d'une bande de
 fréquence dans n'importe quel paramètre via un Link.
 - `.extractor` (`AudioSpectrumExtractor`) : `.audioChannel` (`WeakPointer(AudioDeviceChannel)`,
-  `.set(channelObj)`), `.frequencyInterval`/`.amplitudeInterval` (`Interval(Percentage)` avec
+  `.set(channelObj)`), `.frequencyInterval`/`.amplitudeInterval` (`Interval` avec
   `.begin`/`.end`/`.center`/`.size`).
+- **Unités changées en R15 (30/10/2026)** : `frequencyInterval` est un `Interval(Frequency)` en **Hz** et
+  `amplitudeInterval` un `Interval(Decibel)` en **dB** (les deux étaient des `Percentage` en R13). Les
+  anciennes valeurs en pourcentage sont bornées sans erreur (22.05 Hz minimum, 0 dB) -> intervalles de
+  largeur nulle, la sortie reste à 0 et l'UI affiche les Links « Disconnected » alors qu'ils sont sains.
+  Valeurs d'un extracteur neuf : 330-550 Hz, -40-0 dB. Fréquence : min 22.05 Hz, pas de max dur.
+  Amplitude : bornée à [-50, 0] dB. `end >= begin` est imposé : régler `begin` au plancher, puis `end`,
+  puis `begin`.
+- Attributs R15 de `AudioSpectrumLinkSource` : `method` (`AudioSpectrumExtractorMethod` : 0 mean, 1 max,
+  2 smoothMax — `mean` aplatit les bandes larges), `exponent`, `channel`, `outputChannel`, `outputValue`
+  (sortie lisible, pratique pour déboguer). Paramètres exposés en unités naturelles :
+  `Parameter(Frequency)`, `Parameter(Decibel)` (pas de types de déclaration `Oil.Frequency`/`Oil.Decibel` :
+  utiliser `Oil.PositiveReal`/`Oil.Real` en tête de Script).
+- Spectre d'un canal : `inputChannels[i].spectrum` (`AffineTransformedSampledRealFunction`,
+  `inputScaling` = Hz par bin, ex. 43.15 = 44100/1024 ; `outputScaling` 50 / `outputOffset` -50 = 0..1
+  -> -50..0 dB). Niveau : `channel.vuMeter.intensity.get()` (`PPMVuMeter`). Le device doit avoir
+  `computeWaveformAndSpectrum` = True.
 - Devices audio : `engine.devices.devices`, chaque `JuceAudioDevice` a `.inputChannels`
   (ex. "Left"/"Right" en DirectSound, 8 canaux nommés en ASIO Voicemeeter).
   Exemples : [smode-vizualiser](https://github.com/gyomh/smode-vizualiser),
