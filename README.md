@@ -530,6 +530,67 @@ rather than fixing the existing objects in place.
   `LineShapeGenerator` with `segment.begin/end` in 0-1 coordinates; `DefaultShapeRenderer`:
   `fill.enabled`, `stroke.enabled/.color/.thickness` in pixels of the texture).
 
+- **Sharing 3D geometry (R15, 31/10/2026)**: the way Smode's own example does it is a **`SharedElement(GeometryV9Generator)`
+  tool** (`Oil.createObject("SharedElement(GeometryV9Generator)")`, appended to the compo's `tools`, `label` = name,
+  `getVariableByName("content").set(generator)`) and layers whose `generator` is a **`ReferenceGeometryV9Generator`**
+  with `referencer.address.location` = 0 and `referencer.address.elementPointer.set(se.getVariableByName("content"))`
+  (the *Pointer variable* `content`, not the generator itself: with the generator the reference stays unresolved,
+  `address.target.get()` is None), `referencer.shared` True. Each layer keeps its own `placement` and `renderer`; the
+  reference has its own `modifiers`. What does NOT help: a `ReferenceLayer` (re-draws the target, the profile of 20
+  of them reads 2.3x a clone's) and a `ReferenceGeometryV9Generator` aimed at another layer's generator with
+  `location` 1 + `directPointer` (+7.1 ms for 20 instead of +6.3 for 20 clones). Via the shared element, 20 foliage
+  layers cost +0.9 ms on the status-bar frame time (16.7 -> 17.5 ms) instead of +6.3 ms (status-bar reading, frame capped
+  at 60 fps: indicative). `frameProfileTime` (every element, ms) is readable by script but only refreshes while the
+  Profile column is displayed in the interface; layer times are not additive (a group reads 22 ms for children summing
+  26 ms). Other reference classes found by probing `Oil.createObject`: `ReferenceGeometryV9Modifier`,
+  `ReferenceTextureGenerator`, `ReferenceTextureModifier`.
+
+- **Wiring shared geometry / materials by script (R15, 31/10/2026)**: the `SharedElement` and the `MaterialBank` have to be
+  in the tree before the references can be resolved, so create the layers (with an unresolved `ReferenceGeometryV9Generator`
+  / `ReferenceGeometryLayerUser`, `label` used as a key) in one call and link them in a later call: generator ->
+  `ref.referencer.address.elementPointer.set(tool.getVariableByName("content"))`, `location` 0, `referencer.shared` True;
+  material -> `address.directPointer.set(bank.materials[j])`, `location` 1. `Group3dLayer.tools` accepts both tools.
+  A repeat modifier put on the reference is evaluated per layer (its offset is applied before the layer size); in a
+  scene of 54 foliage layers, shared geometry + shared materials + coarser LOD (subdivision 4/3/2 -> 3/2/1) only moved the
+  trees from ~17 to ~15-17 ms (profile noise is +-2 ms): the per-layer cost is mostly fragment work of the textured PBR
+  materials (the same far trees with a plain-colour material read 4.7 ms instead of 8.0), not triangles or generation.
+- **A wrapping world slide**: a world that is periodic in D0 only needs copies over one tile if its slide wraps: key
+  `x = -D0` with a `StepKeyframeInterpolator` output, then `x = -v*eps` one frame later (instant, invisible jump).
+
+- **Timeline sequences with break markers (R15, 31/10/2026, read from a project built by hand)**: `mainAnimation.timeMarkers`
+  holds markers with `breaking` (play stops there until resumed) and `action` (`GotoTimelineAction` -> jumps to another
+  marker: a loop that survives). A cue block with `footage.position.automateTransport` False does not drive the cue: the cue
+  plays by itself (and loops between its own `parameters.in/out`; with `launchMode` restartWithActivation it restarts when its
+  block activates) while a block with automateTransport True drives it. A `ParameterTrack` on the cue's `parameters.speed`
+  (SpeedFactor) changes the playback speed of a looping cue. To find which object a parameter track drives, call
+  `target.sourceElements()` on the track's target: it returns the track, named "Track <Element> <Parameter>".
+
+- **Starting a transition at the end of a loop cycle (R15, 31/10/2026)**: a Script ("At Every Update", two `Oil.Boolean` buttons
+  that it resets itself, since a `Trigger` cannot be read) watches the `transport.position` of the looping cue; a wrap is a
+  drop of more than half its in/out range. At that frame it does `mt.transport.position.set(marker + elapsed)` then
+  `mt.transport.play.trig()` (both in the same call work) with `elapsed = cue position - in`. Keep the Script's code in a
+  string executed once (Smode recompiles the text every frame) and its state in a registry, not in `globals()`.
+  `parameters.getVariableByName("in").value` gives the cue's loop range; a breaking marker stops the main timeline while
+  the looping cue keeps playing by itself.
+
+- **Driving a Script's `Oil.Boolean` button from a bank (R15, 31/10/2026)**: a `Parameter(Trigger)` links to it with a
+  `SetConstantLinkModifier` (`p.modifiers[0].value.set(True)`: its default `False` makes the click do nothing); the Script
+  resets its own button, so every click is a new False -> True change. A `Parameter(Boolean)` (on/off) linked to such a
+  button needs two clicks: the Script resets the button but the parameter keeps its state, so the next click pushes
+  a value the button already has. A bank Trigger fires from Python with `p.value.trig()`.
+
+- **Key times below 0 are clamped to 0** (`cue.createKeyframe(param, -0.1, False)` stores a key at 0.0, a second one at 0.0 when 0
+  is keyed too), keys past the end of the cue are kept. A Smooth (Catmull-Rom) loop therefore needs lead-in keys inside
+  the cue: key the cycle from `OFF` (> one key spacing) and loop between `parameters.in = OFF` and `out = OFF + cycle`.
+  A script-made block with default settings looped over the WHOLE cue length (1.25 s for a 1 s cycle + 0.25 s of
+  neighbour keys), ignoring the cue's own in/out; in a hand-built sequence the cue (`launchMode` restartWithActivation,
+  block `automateTransport` False) looped on its in/out (measured 1.0 s). Set the block's `footage.position.in/out`
+  explicitly when you create the block by script.
+- **A normal map on a very long ground strip made the lighting drift with the world offset (R15, 31/10/2026)**: a 600 m
+  `PlaneGeometryGenerator` with a mirrored-repeat normal map got darker/brighter along its length (ground luma 45 -> 67 over
+  25 m of slide, then a jump when the loop restarted) although the albedo texture was periodic. Found by switching layers
+  off one by one and measuring the mean luma of image zones either side of the loop point; `normalLevel` 0 removed it.
+
 ## Compo camera (R15)
 
 - **Camera of a compo (R15, 30/10/2026)**: editing `compo.defaultCamera` changed nothing on screen. What works: an
@@ -760,6 +821,13 @@ script.project.masterScene.layers.append(scene)   # last append
   its own clone — `scene.getVariableByName("mainAnimation").set(scene.mainAnimation.clone())`. Element tracks,
   blocks, fades, parameter tracks and keys are all kept (same counts, every weak pointer still resolves) and the
   tracks then survive a drop.
+  **The clone has to be applied to every script-made timeline, not only the main one (R15, 31/10/2026)**: cues kept in an
+  `AnimationBank` and keyed by `createKeyframe` / `createBlock` lost their tracks too when the user dropped an element on
+  them (a loop cue lost its 4 parameter tracks, another its nested block). Pattern that survives: build + key a cue, then
+  in a later call `cl = cue.clone(); bank.animations.remove(cue); bank.animations.append(cl)`, leaf cues first (a
+  parent's block points at the cue it was made with: clear it and re-create it with the clone), main timeline blocks last,
+  then clone the main timeline. Reading an animated value right after `transport.position.set()` in the same call gives
+  the previous frame: read it in the next call.
 - **Keys by script**: `tc.createKeyframe(parameter, seconds, False)` → `(ParameterTrack, Keyframe)` keys the
   parameter's **current** value (set it first) and creates the track if needed. A new key has
   `StepKeyframeInterpolator` on both sides: set `kf.inputInterpolator` / `kf.outputInterpolator` through
