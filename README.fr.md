@@ -771,7 +771,9 @@ vérificateur de syntaxe externe en Python 3.11 rejette des f-strings imbriquée
 `Oil` est déjà injecté dans le contexte d'un Script : `import Oil` est inutile. `site-packages/Smode/`
 (`Oil.py`, `SmodeSDK.py`, `Sys.py`) enveloppe des extensions compilées dans `Smode.exe` : pas d'`import
 Smode` depuis un interpréteur externe. La doc officielle (doc.smode.io, section Python scripting) précise que
-l'API n'est pas publiée.
+l'API n'est pas publiée. Python 3.12.3 en R15 15.9 ; `sys.path` = `''`, `python\Lib`, `python\Lib\site-packages`,
+`python\DLLs`, le dossier de Smode : pas de site-packages utilisateur, les paquets installés pour un autre Python ne
+sont pas visibles. Le dossier de travail était `C:\WINDOWS\system32` (30/10/2026) : utilisez des chemins absolus.
 
 Confirmé fiable :
 ```python
@@ -936,6 +938,35 @@ pas seulement le script lui-même.
   `class` est recréée à chaque image. Une classe d'exception levée par un fil et attrapée quelques images plus tard
   n'est plus le même objet : `except MonErreur:` la rate. Gardez ces classes (tout ce qui se compare par identité)
   dans un dictionnaire persistant : `MonErreur = _ETAT.setdefault("MonErreur", MonErreur)`.
+- **Smode reconstruit le Script à partir de son texte à chaque exécution** (R15 15.9, 30/10/2026). Chaque exécution
+  passe par `SmodeSDK.PythonScriptInstance` (`site-packages/Smode/SmodeSDK.py`) : `ast.parse` de toute la source,
+  exécution des déclarations de paramètres (les paramètres sont recréés), `ast.unparse` des autres instructions,
+  `compile`, puis `exec`. En « At Every Update », c'est à chaque image, quoi que fasse le code. Le coût suit le
+  nombre de nœuds de syntaxe et de paramètres (~0,05 ms chacun) ; les commentaires ne coûtent rien, une grosse
+  chaîne littérale très peu. Mesuré : Script vide 0,1 ms ; un pont HTTP de 250 lignes avec 10 paramètres 9,4 ms par
+  image (environ 2 fps sur un projet à 12 fps) ; un Script de 4000 lignes faisait passer un projet de 11,8 à
+  6,6 fps (7,2 fps avec son corps non exécuté).
+  - Gardez le code dans une chaîne exécutée une seule fois, et n'appelez qu'une fonction à chaque image (0,6 ms pour
+    le même pont avec 2 paramètres) :
+    ```python
+    port: Oil.PositiveInteger(8891)
+
+    _MON_CODE = r'''
+    def ma_frame():
+        ...
+    '''
+    if globals().get("_MON_CODE_EXEC") != _MON_CODE:   # première exécution, ou nouveau code collé
+        exec(compile(_MON_CODE, "mon_script", "exec"), globals())
+        _MON_CODE_EXEC = _MON_CODE
+    ma_frame()
+    ```
+  - Ou gardez le code dans un fichier lu une fois : `try: ma_frame()` / `except NameError: exec(open(chemin).read(),
+    globals())`. Pour le relire quand le fichier change, le code vérifie `os.path.getmtime` toutes les quelques
+    secondes et retire `ma_frame` de `globals()` : l'image suivante relit le fichier.
+  - Tout ce qui est hors de la chaîne est réécrit et recompilé à chaque image : gardez cette partie et le nombre de
+    paramètres aussi petits que possible.
+  - Les fonctions créées par `exec(compile(src, "mon_script", "exec"))` ont `__code__.co_filename == "mon_script"` :
+    une purge des fonctions périmées peut épargner les fonctions des autres Scripts dans les globals partagés.
 - **Fils et verrou Python (GIL)** (R15, 18/10/2026, mesuré depuis un fil de Script pendant que Smode tourne) : Smode
   garde le verrou la plupart du temps. Chaque appel `ctypes` par `WinDLL` le rend, puis attend ~30-250 ms pour le
   reprendre : `time.sleep(0.02)` dure 49 ms (médiane), une capture d'écran 40x40 (10 appels GDI) 149 ms,
@@ -1116,7 +1147,18 @@ une vraie interface graphique pour un Script, sans rien installer.
   d'un autre Script du projet.
 - **Mise à jour du code** : le module est réexécuté à chaque frame avec le nouveau `sourceCode`, donc les fonctions
   appelées par le serveur sont toujours les dernières ; redémarrer le serveur seulement si une constante de version
-  ou le port change.
+  ou le port change. Avec le code gardé dans une chaîne exécutée une fois (voir « Smode reconstruit le Script à
+  partir de son texte à chaque exécution »), réexécuter la chaîne quand elle change.
+- **Un serveur par port sous Windows** : `HTTPServer` met `allow_reuse_address = True`, et sous Windows
+  `SO_REUSEADDR` laisse un second serveur prendre un port déjà utilisé sans aucune erreur (par exemple un second Smode avec
+  le même projet ouvert) : les connexions vont alors à l'un ou à l'autre. Mettre `allow_reuse_address = False`
+  dans la classe du serveur pour obtenir l'`OSError` à la place.
+- **Gros outils : l'interface hors de Smode**. Les threads d'un Script tournent sous le verrou Python de Smode et la
+  source est reconstruite à chaque frame : pour un gros outil, mettre l'interface et le travail long dans un programme
+  séparé (son propre Python), et garder dans Smode un court agent « At Every Update » qui exécute une liste fixe de
+  tâches Oil nommées, demandées sur `127.0.0.1` (jamais de code reçu en HTTP). Le Script peut lancer le programme
+  avec `os.startfile` (depuis un thread). Un `.pyw` est lancé par le lanceur `py`, qui prend le Python installé le
+  plus récent (éventuellement 32 bits) : une première ligne `#!python3.11` choisit la version.
 - **Fenêtre d'application** : `msedge.exe --app=http://127.0.0.1:<port> --window-size=1400,900` ouvre une fenêtre
   sans barre d'adresse (Edge est présent sur Windows 10/11).
 - **Sécurité** : écouter `127.0.0.1` seulement, refuser un en-tête `Host` autre que `127.0.0.1` / `localhost` (DNS
