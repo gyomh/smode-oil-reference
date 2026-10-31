@@ -489,6 +489,18 @@ plutôt que corriger les objets existants en place.
   4 topLeft). Résolution de la compo : `compo.rasterizer.resolution.width.get()`.
 - Pour qu'un texte d'avertissement ne soit pas rendu : `layer.activation.set(False)` et texte vide quand
   il n'y a rien à dire.
+- **Ancre, police, opacité (R15, 31/10/2026)** : `renderer.placement.position` désigne le point d'**ancre**, par défaut
+  le **centre** de la boîte de texte (un texte aligné à gauche à `position.x = 0.1` sort de l'écran). Pour poser le coin
+  haut-gauche : `placement.anchor.x = 0.0`, `placement.anchor.y = 0.0`. Police : `generator.font` est un `FontSelector`
+  (`type` = `selectName`) dont `font` (`FreeTypeFontName`) se règle par `generator.font.font.set("Consolas")` (le défaut
+  est `Arial`, proportionnelle : un log en colonnes ne s'aligne pas). `renderer.opacity.set(0.0..1.0)` existe sur le
+  texte et sur le `SingleTextureRenderer` d'un `TextureLayer`.
+- **Plantage d'introspection (R15, 31/10/2026)** : un `dir()` / `getOilClassName()` enchaînés sur `generator.font`,
+  `renderer.placement` et `renderer.atlas` d'un `TextLayer` jetable, dans un seul appel, a fait **planter Smode**.
+  Les mêmes attributs lus **un par appel** passent sans problème.
+- **Pas de classe de bloom/glow** (`BloomTextureModifier`, `GlowTextureModifier`... n'existent pas) et
+  `BlurV8TextureModifier` n'a pas de `blendingMode` : pour une lueur, afficher le contenu deux fois (sous-compo) dont
+  une copie floue en `linearDodge`.
 
 ## Parameter banks liées à un Script (R15)
 
@@ -762,6 +774,95 @@ Mesuré en reconstruisant des clips pré-rendus à partir de leurs images source
 - `ExposureTextureModifier` (`exposure` en diaphs, `offset`, `gamma`, `intensity`) dans `generator.modifiers` :
   des clés d'`exposure` -8 ↔ 0 le long d'un fondu de bloc donnent un fondu plus beau que l'opacité seule.
 - Les PNG 16 bits se chargent sans problème dans `ImageFileTextureGenerator`.
+
+## Look écran CRT : bloom, warp bombé, scanlines, vignette (R15, 31/10/2026)
+
+Construit pour une animation de faux OS (voir le motif `os_anim_crt.py`), sur `compo.modifiers` / calques du dessus :
+- **Le bloom est un style du flou**, pas une classe : `BlurV8TextureModifier` avec `style.blendingModeWithInput.set(12)`
+  (linearDodge), `style.luminosityThreshold` (0.30), `style.outputLuminosity` (1.4 = 140 %), `radius` 16. Le flou n'a pas
+  de `blendingMode` propre ; `style` (`BlurStyleParameters`) contient aussi `aggregator`, `invertBlendingOrder`,
+  `maskInterpretation`.
+- **Distorsion barillet / coussinet = `WarpTextureModifier`** (warp de maillage, `points` = `OwnedVector(Warp2dPoint)`,
+  chacun avec `position` et `delta`, deux `Canvas2dPosition` en fractions de la compo ; `precision.x/.y` = subdivisions,
+  `editSource`, `perspectiveMapping`, `filtering`). Un Warp neuf démarre avec les 4 points de coin. **Faire `points.clear()`
+  d'abord puis ajouter la grille LIGNE PAR LIGNE** (laisser les 4 coins par défaut en tête du vecteur déchire le maillage).
+  9x9 points avec `delta = (0.5*u*K*r2, 0.5*v*K*r2)`, `u,v` dans [-1, 1], `r2 = u*u + v*v` : **K < 0 = barillet** (bords
+  comprimés, coins noirs), K > 0 = coussinet ; K = -0.05 donne un look CRT. Mettre `editSource.set(False)` ; après
+  `modifiers.append(w)`, un basculement `w.activation.set(False)` puis `set(True)` a été nécessaire pour qu'il s'affiche.
+  Le placer EN DERNIER pour qu'il courbe aussi le bloom et les surcouches.
+- **Scanlines** : `CheckerBoardTextureGenerator` avec `size.linked = False`, `size.width = 4000` (une seule colonne),
+  `size.height = 3`, `evenColor` alpha 0, `oddColor` noir alpha 0.35, sur un `TextureLayer` en haut de pile.
+- **Vignette** : `GradientTextureGenerator` (`type` `Circular2dGradient`, `gradient` `BitoneColorFunction`) : `beginColor`
+  alpha 0 -> `endColor` noir alpha 0.95 ; le cercle est `position` (`Ellipse` : `center`, `size` en **pixels**, `rotation`),
+  2600 x 1600 sur une compo 1920 x 1080 (`size.linked = False` d'abord). `renderer.blendingMode` d'un `TextureLayer` n'est pas
+  un enum simple (`toString()` = `BlendingMode()`) : rester en mode Normal et jouer sur l'alpha.
+- **`clear()` sur une scène construite plante Smode** (31/10/2026, deux fois) : `comp.layers.clear()` +
+  `comp.modifiers.clear()` sur un Compo de 100+ calques avec un Warp. Reconstruire depuis un Compo vide. **Vider un document Compo autonome (pas de Scènes à retirer) marche avec `removeAt`, un élément à la fois** (R15, 31/10/2026, 13 calques imbriqués + Warp + Bloom + un script, sans plantage) : `tools.removeAt(i)` pour le script, `modifiers.removeAt(0)` deux fois, puis `layers.removeAt(names.index(nom))` de haut en bas ; les pistes de timeline des calques retirés disparaissent d'elles-mêmes (0 restante). **Un script qui met des calques en cache dans `globals()` doit indexer son cache sur l'objet script lui-même** (`c_ is script`), pas sur le Compo : après avoir vidé et reconstruit dans le même document, le Compo est le même objet Python, donc le cache gardait 148 calques périmés (détruits).
+
+## Animation « timeline d'abord » : sous-Compos comme « fenêtres » animables (R15, 31/10/2026)
+
+Construit pour une animation de faux OS de 30 s où chaque mouvement doit être une clé éditable (aucun mouvement piloté par script) :
+- **`GroupLayer` n'a pas d'opacité** (seulement `placement`, `layers`, `tools`, `worldMatrix`). Pour fondre/déplacer/mettre
+  à l'échelle un ensemble de calques avec des clés, les mettre dans un `Compo` fils (`rasterizer.resolution` perso
+  1920x1080, `preset.set(40)`) affiché par un `TextureLayer` (`generator = subCompo`) : `renderer.opacity`,
+  `renderer.placement.position/anchor`, `scale.scaleFactor.width/height` sont tous clés possibles. Des sous-Compos imbriqués
+  dans un **document** Compo s'affichent sans cible. Fenêtre = un wrapper par fenêtre ; échelle autour du centre en mettant
+  `anchor` = `position` = centre (fractions de la texture = de la compo) et `scale.scaleFactor.linked = False`, puis clés sur
+  la largeur puis la hauteur (« la ligne s'ouvre, puis la fenêtre »).
+- **Clés par `tc.createKeyframe(param, secondes, False)`** sur des paramètres de calques imbriqués dans des sous-Compos
+  (`tc` = `mainAnimation` du document), sur `TextureLayer.renderer.opacity`, `placement.position.x/.y`,
+  `scale.scaleFactor.width/.height`, `scale.size.width` d'un calque plein, et sur les **paramètres déclarés d'un
+  PythonScriptTool** (`tool.dynamicVariables[i]`, ordre de déclaration, `Oil.Percentage`). 586 clés / 35 pistes en un appel.
+  Les interpolateurs `Step` (défaut) font tremblement/clignotement ; `Linear`/`Ease` via `kf.linkInterpolators.set(False)` +
+  `getVariableByName("inputInterpolator"/"outputInterpolator").set(Oil.createObject("EaseKeyframeInterpolator"))`.
+  Une piste en `Step` garde la valeur de sa PREMIÈRE clé avant elle : ajouter une clé à t = 0 avec la valeur de repos.
+- **Le texte ne se clé pas** (chaînes). Motif : le script déclare des paramètres `Progress` (0..1) clés sur la timeline
+  (deux clés par ligne tapée : début et fin, valeur = caractères tapés / total) ; le script ne fait que
+  `texte[:int(progress * len(texte))]`. Vitesse et pauses de frappe se règlent alors en clés. Garder le mouvement
+  d'ambiance (barres, jauges, horloge) dans le script seulement s'il n'a pas à être recalé par l'utilisateur.
+- Les clés ne sont évaluées **que pendant la lecture** (ou en déplaçant la tête de lecture dans l'UI) : pour vérifier une
+  image depuis le pont, `transport.position.set(t - 0.25)`, `play.trig()`, attendre ~250 ms, capturer l'écran, `pause.trig()`
+  (position réelle relue ; +-0,4 s). Appliquer le correctif du clone (`mainAnimation.set(mainAnimation.clone())`) dans un appel ultérieur.
+- **Blocs de compo sur la timeline = règle d'organisation** (31/10/2026) : donner à chaque objet de premier niveau son propre bloc (`tc.createBlock(calque)` -> `(piste, bloc)` ; `block.autoLength.set(False)`, `block.position.set(s)`, `block.length.set(s)`) couvrant seulement la période où il sert : le calque n'est affiché que dans son bloc, et la timeline se lit comme une arborescence de fichiers (13 pistes pour la compo de faux OS). Sauter les calques qui ont déjà une piste (`for k, tr in tc.elementTracks.items(): k.get()`), l'utilisateur ayant pu placer des blocs à la main ; puis appliquer le correctif du clone dans un appel ultérieur (les 13 pistes d'éléments et les 35 pistes de paramètres ont survécu). **Tout élément animé a son bloc, imbriqués compris** : `tc.createBlock(calque)` accepte un calque profond dans des sous-Compos (ex. `Boot Logo/Progress Bar/Bar Fill`, `Desktop/Icon Network/Highlight`, `Window Terminal/Content`) ; 20 pistes d'éléments dans la compo de faux OS, le bloc couvrant les clés de l'élément. Plusieurs calques imbriqués peuvent partager un nom (3 `Highlight`) : identifier les pistes par l'objet calque, pas par le nom.
+- Les paramètres d'un script se lisent par `getattr(script, nom)` (renvoie un `Percentage`, `.get()`).
+
+## Organisation du projet : « dossiers » dans l'arbre et dans la timeline (R15, 31/10/2026)
+
+Convention appliquée à la compo de faux OS (et règle à suivre pour tout projet Smode construit par script). Une sous-`Compo` affichée
+par un `TextureLayer` est le « dossier » de l'arbre Elements ; un calque feuille est un « fichier ». `layer.label` et le `label` de la
+sous-Compo portent le même nom lisible en title case (`Icon Network`, jamais `IC1_G3`).
+- **Un objet = un dossier** : une icône, une jauge, une barre de progression, un cadre de fenêtre ont chacun leur sous-Compo, qui ne
+  contient que leurs propres feuilles aux noms génériques lisibles (`Border`, `Background`, `Highlight`, `Glyph 1..n`, `Label`, `Track`, `Fill`...).
+- **Arbre de la compo de faux OS** (13 entrées de premier niveau) :
+  ```
+  Boot Log                         Window Terminal / Window Network / Window System
+  Boot Logo                          |- Frame    (Border, Background, Title Bar)
+    `- Progress Bar (Border,          `- Content  (Title Text + Terminal Text | Traffic Label, Traffic Bars [Bar 1..24,
+       Background, Fill)                          Baseline], Hosts Text | Gauge CPU/Memory/Link [Track, Fill, Gauge Name],
+  Desktop                                        Info Text)
+    |- Grid (Vertical/Horizontal Line n)
+    |- Scan Line
+    |- Top Bar (Background, Line, Left Text, Clock)
+    `- Icon Terminal / Network / System / Archive (Border, Background, Highlight, Glyph n, Label)
+  Cursor (Crosshair Horizontal/Vertical, Cursor Point) | Alert Denied / Granted (Band + texte) | Glitch Bars
+  Fade To Black | CRT Scanlines | CRT Vignette
+  ```
+  Ordre = ordre du panneau Elements = ordre de dessin (le premier est dessous). Les modificateurs (`Bloom`, `CRT Curvature`) et le script
+  sont à côté des calques.
+- **La timeline reflète l'arbre** : un bloc par dossier de premier niveau, plus un bloc pour chaque élément imbriqué qui porte des clés
+  (`Bar Fill`, les 3 `Highlight`, les 3 `Content`) : 20 pistes d'éléments, chaque bloc couvrant la période où l'élément sert (règle des
+  blocs ci-dessus). `tc.elementTracks` est une `Map` à plat indexée par calque : l'imbrication n'y est PAS stockée, seulement dans l'arbre
+  du Compo ; identifier une piste par son objet calque (`k.get()`) ou par le chemin complet `Window Terminal/Content`, jamais par le nom seul.
+- **Recherche par chemin dans les scripts, pas par code** : enregistrer chaque calque sous son chemin complet et ses deux derniers noms
+  (`"Icon Network/Glyph 1"`, `"Content/Terminal Text"`) en parcourant `compo.layers` -> `layer.generator.layers` pour les sous-Compos ;
+  côté construction, un helper `at("Desktop/Icon Network/Highlight")` descend de la même façon.
+- **Vérifié dans l'interface (31/10/2026) : le panneau Timeline montre l'arbre, repliable.** Les blocs imbriqués sont listés sous
+  leur parent (`Desktop` > 3 `Highlight` ; `Window Network` > `Content`), un bloc se déplie sur les sous-éléments, et chaque paramètre
+  clé (`Opacity`, `Position -> X/Y`, `Scale -> Scale Factor`...) est une ligne **sous l'élément qu'il anime**, ses clés en losanges dans
+  la piste. Le survol d'une ligne donne le chemin complet (`Simulation OS Timeline -> Desktop -> Icon System -> Highlight`), ce qui permet
+  de distinguer des calques qui partagent un nom. La convention d'arbre ci-dessus se retrouve donc gratuitement dans la timeline : une
+  arborescence bien nommée = une timeline bien organisée. (La `Map` `elementTracks` reste à plat ; l'imbrication est reconstruite par le
+  panneau à partir de l'arbre du Compo.)
 
 ## Audio réactif
 

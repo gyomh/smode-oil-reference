@@ -646,6 +646,17 @@ rather than fixing the existing objects in place.
   `compo.rasterizer.resolution.width.get()`.
 - To keep a warning text out of the rendering: `layer.activation.set(False)` and an empty text
   when there is nothing to say.
+- **Anchor, font, opacity (R15, 31/10/2026)**: `renderer.placement.position` is the **anchor** point, the **centre** of
+  the text box by default (a left-aligned text at `position.x = 0.1` runs off the screen). To place the top-left corner:
+  `placement.anchor.x = 0.0`, `placement.anchor.y = 0.0`. Font: `generator.font` is a `FontSelector` (`type` =
+  `selectName`) whose `font` (`FreeTypeFontName`) is set with `generator.font.font.set("Consolas")` (default `Arial`,
+  proportional: a columned log does not line up). `renderer.opacity.set(0.0..1.0)` exists on text and on the
+  `SingleTextureRenderer` of a `TextureLayer`.
+- **Introspection crash (R15, 31/10/2026)**: chained `dir()` / `getOilClassName()` on `generator.font`,
+  `renderer.placement` and `renderer.atlas` of a throwaway `TextLayer`, in one call, **crashed Smode**. The same
+  attributes read **one per call** are fine.
+- **No bloom/glow class** (`BloomTextureModifier`, `GlowTextureModifier`... do not exist) and `BlurV8TextureModifier`
+  has no `blendingMode`: for a glow, show the content twice (sub-compo), one copy blurred in `linearDodge`.
 
 ## Parameter banks linked to a Script (R15)
 
@@ -993,6 +1004,92 @@ sub-shape of a `GroupShapeGenerator` (merging does not help) or drawn in a small
   `GroupTextureRenderer` on its `TextureLayer` (`renderers.append(SingleTextureRenderer)`, each with its own
   `placement`; default scale = 100 % of the texture's pixels). Shapes crossing a tile edge are repeated on the other
   side (shift of one tile) so the copies join.
+
+## CRT screen look: bloom, barrel warp, scanlines, vignette (R15, 31/10/2026)
+
+Built for a fake-OS animation (see `os_anim_crt.py` pattern), all on `compo.modifiers` / top layers:
+- **Bloom is a style of the blur**, not a class: `BlurV8TextureModifier` with `style.blendingModeWithInput.set(12)`
+  (linearDodge), `style.luminosityThreshold` (0.30), `style.outputLuminosity` (1.4 = 140 %), `radius` 16. The blur has
+  no `blendingMode` of its own; `style` (`BlurStyleParameters`) also holds `aggregator`, `invertBlendingOrder`,
+  `maskInterpretation`.
+- **Barrel / pincushion distortion = `WarpTextureModifier`** (mesh warp, `points` = `OwnedVector(Warp2dPoint)`, each with
+  `position` and `delta`, both `Canvas2dPosition` in compo fractions; `precision.x/.y` = subdivisions, `editSource`,
+  `perspectiveMapping`, `filtering`). A new Warp starts with the 4 corner points. **Do `points.clear()` first and append
+  the grid ROW BY ROW** (leaving the 4 default corners at the head of the vector tears the mesh). 9x9 points with
+  `delta = (0.5*u*K*r2, 0.5*v*K*r2)`, `u,v` in [-1, 1], `r2 = u*u + v*v`: **K < 0 = barrel** (edges pulled in, black
+  corners), K > 0 = pincushion; K = -0.05 reads as a CRT. Set `editSource.set(False)`; after `modifiers.append(w)` a
+  toggle `w.activation.set(False)` then `set(True)` was needed before it rendered. Put it LAST so it bends the bloom and
+  the overlays too.
+- **Scanlines**: `CheckerBoardTextureGenerator` with `size.linked = False`, `size.width = 4000` (one column), `size.height = 3`,
+  `evenColor` alpha 0, `oddColor` black alpha 0.35, on a top `TextureLayer`.
+- **Vignette**: `GradientTextureGenerator` (`type` `Circular2dGradient`, `gradient` `BitoneColorFunction`): `beginColor`
+  alpha 0 -> `endColor` black alpha 0.95; the circle is `position` (`Ellipse`: `center`, `size` in **pixels**, `rotation`),
+  2600 x 1600 on a 1920 x 1080 compo (`size.linked = False` first). `renderer.blendingMode` of a `TextureLayer` is not a
+  plain enum (`toString()` = `BlendingMode()`): keep the Normal mode and use alpha.
+- **`clear()` on a built scene crashes Smode** (31/10/2026, twice): `comp.layers.clear()` + `comp.modifiers.clear()` on a
+  Compo holding 100+ layers and a Warp. Rebuild from an empty Compo instead. **Emptying a standalone Compo document (no Scenes to drop) works with `removeAt`, one element at a time** (R15, 31/10/2026, 13 nested layers + Warp + Bloom + a script, no crash): `tools.removeAt(i)` for the script, `modifiers.removeAt(0)` twice, then `layers.removeAt(names.index(name))` from the top down; the timeline tracks of the removed layers disappear by themselves (0 left). **A script that caches layers in `globals()` must key its cache on the script object itself** (`c_ is script`), not on the Compo: after emptying and rebuilding in the same document the Compo is the same Python object, so the cache kept 148 stale (destroyed) layers.
+
+## Timeline-first animation: sub-Compos as animatable "windows" (R15, 31/10/2026)
+
+Built for a 30 s fake-OS animation where every move must be a key the user can edit (no script-driven motion):
+- **`GroupLayer` has no opacity** (only `placement`, `layers`, `tools`, `worldMatrix`). To fade/move/scale a set of layers
+  with keys, put them in a sub-`Compo` (custom 1920x1080 `rasterizer.resolution`, `preset.set(40)`) shown by a
+  `TextureLayer` (`generator = subCompo`): `renderer.opacity`, `renderer.placement.position/anchor`,
+  `scale.scaleFactor.width/height` are all keyable. Sub-Compos nested in a Compo **document** render without any target.
+  Windows = a wrapper per window; scale about the window centre by setting `anchor` = `position` = centre (fractions of the
+  texture = of the compo) and `scale.scaleFactor.linked = False`, then key width then height ("line opens, then window").
+- **Keys by `tc.createKeyframe(param, seconds, False)`** work on parameters of layers nested in sub-Compos
+  (`tc` = the document's `mainAnimation`), on `TextureLayer.renderer.opacity`, `placement.position.x/.y`,
+  `scale.scaleFactor.width/.height`, `scale.size.width` of a solid layer, and on the **declared parameters of a
+  PythonScriptTool** (`tool.dynamicVariables[i]`, declaration order, `Oil.Percentage`). 586 keys / 35 tracks created in one call.
+  `Step` (default) interpolators make jitter/blink; `Linear`/`Ease` via `kf.linkInterpolators.set(False)` +
+  `getVariableByName("inputInterpolator"/"outputInterpolator").set(Oil.createObject("EaseKeyframeInterpolator"))`.
+  A step track holds its FIRST key's value before it: add a key at t = 0 with the rest value.
+- **Text cannot be keyed** (strings). Pattern: the script declares `Progress` parameters (0..1), keyed on the timeline
+  (two keys per typed line: start and end time, value = typed characters / total); the script only does
+  `text[:int(progress * len(text))]`. Typing speed/pauses are then edited as keys. Keep ambient motion (bars, gauges, clock)
+  in the script only if it is not something the user must retime.
+- Keys are evaluated **only while the timeline plays** (or when the playhead is moved in the UI): to check a frame from the
+  bridge, `transport.position.set(t - 0.25)`, `play.trig()`, wait ~250 ms, grab the screen, `pause.trig()` (real position
+  read back; +-0.4 s). Apply the clone fix (`mainAnimation.set(mainAnimation.clone())`) in a later call.
+- **Compo blocks on the timeline = the organisation rule** (31/10/2026): give each top-level object its own block (`tc.createBlock(layer)` -> `(track, block)`; `block.autoLength.set(False)`, `block.position.set(s)`, `block.length.set(s)`) covering only the time it is needed: the layer is displayed only inside its block, and the timeline reads like a file tree (13 tracks for the fake-OS compo). Skip layers that already have a track (`for k, tr in tc.elementTracks.items(): k.get()`), as the user may have placed blocks by hand; then apply the clone fix in a later call (all 13 tracks and 35 parameter tracks survived). **Any animated element gets its block, nested ones included**: `tc.createBlock(layer)` accepts a layer deep in sub-Compos (e.g. `Boot Logo/Progress Bar/Bar Fill`, `Desktop/Icon Network/Highlight`, `Window Terminal/Content`); 20 element tracks in the fake-OS compo, the block spanning the element's keys. Several nested layers can share a label (3 `Highlight`): identify tracks by the layer object, not the label.
+- Parameters of a script can be read by `getattr(script, name)` (returns a `Percentage`, `.get()`).
+
+## Project organisation: "folders" in the tree and the timeline (R15, 31/10/2026)
+
+Convention used for the fake-OS compo (and the rule to follow for any Smode project built by script). A sub-`Compo` shown by a
+`TextureLayer` is the "folder" of the Elements tree; a leaf layer is a "file". `layer.label` and the sub-Compo's `label` carry the same
+readable title-case name (`Icon Network`, never `IC1_G3`).
+- **One object = one folder**: an icon, a gauge, a progress bar, a window frame each get their own sub-Compo, containing only their own
+  leaves with generic readable names (`Border`, `Background`, `Highlight`, `Glyph 1..n`, `Label`, `Track`, `Fill`...).
+- **Tree of the fake-OS compo** (13 top-level entries):
+  ```
+  Boot Log                         Window Terminal / Window Network / Window System
+  Boot Logo                          |- Frame    (Border, Background, Title Bar)
+    `- Progress Bar (Border,          `- Content  (Title Text + Terminal Text | Traffic Label, Traffic Bars [Bar 1..24,
+       Background, Fill)                          Baseline], Hosts Text | Gauge CPU/Memory/Link [Track, Fill, Gauge Name],
+  Desktop                                        Info Text)
+    |- Grid (Vertical/Horizontal Line n)
+    |- Scan Line
+    |- Top Bar (Background, Line, Left Text, Clock)
+    `- Icon Terminal / Network / System / Archive (Border, Background, Highlight, Glyph n, Label)
+  Cursor (Crosshair Horizontal/Vertical, Cursor Point) | Alert Denied / Granted (Band + text) | Glitch Bars
+  Fade To Black | CRT Scanlines | CRT Vignette
+  ```
+  Order = Elements-panel order = draw order (first = bottom). Modifiers (`Bloom`, `CRT Curvature`) and the script sit beside the layers.
+- **Timeline mirrors the tree**: one block per top-level folder, plus one block for every nested element that carries keys
+  (`Bar Fill`, the 3 `Highlight`, the 3 `Content`): 20 element tracks, each block spanning the period where the element is needed (see the
+  block rule above). `tc.elementTracks` is a flat `Map` keyed by layer: the nesting is NOT stored there, only in the Compo tree, so
+  identify a track by its layer object (`k.get()`) or by the full path `Window Terminal/Content`, never by the label alone.
+- **Script lookups by path, not by code**: register every layer under its full path and its last two names (`"Icon Network/Glyph 1"`,
+  `"Content/Terminal Text"`) while walking `compo.layers` -> `layer.generator.layers` for sub-Compos; build-side helper
+  `at("Desktop/Icon Network/Highlight")` descends the same way.
+- **Verified in the UI (31/10/2026): the Timeline panel shows the tree, collapsible.** Nested blocks are listed under their parent
+  (`Desktop` > 3 `Highlight`; `Window Network` > `Content`), a block expands to the element's sub-elements, and each keyed parameter
+  (`Opacity`, `Position -> X/Y`, `Scale -> Scale Factor`...) is a row **under the element it animates**, with its keys as diamonds in
+  the lane. Hovering a row gives the full path (`Simulation OS Timeline -> Desktop -> Icon System -> Highlight`), which is how to tell
+  apart layers that share a label. So the tree convention above carries over to the timeline for free: a well-named folder
+  structure is a well-organised timeline. (The `elementTracks` `Map` itself stays flat; the nesting is rebuilt by the panel from the Compo tree.)
 
 ## Audio reactive
 
