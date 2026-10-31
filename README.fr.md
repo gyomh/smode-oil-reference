@@ -864,6 +864,43 @@ sous-Compo portent le même nom lisible en title case (`Icon Network`, jamais `I
   arborescence bien nommée = une timeline bien organisée. (La `Map` `elementTracks` reste à plat ; l'imbrication est reconstruite par le
   panneau à partir de l'arbre du Compo.)
 
+## Vieux téléviseur dans Smode : import FBX, écran émissif, lumière d'écran simulée (R15, 31/10/2026)
+
+Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y up) pour un document Compo (« Old TV retro »).
+- **`subGeometryToUse` désigne un nœud par son CHEMIN** : `"Old TV Root/TV Body"`, pas `"TV Body"` (un nom de nœud seul laisse le
+  générateur en `error: could not retrieve the file information (have you deleted your file?)` alors que le fichier est trouvé et que
+  `Scene3dFile.meshes` / `.vertices` sont corrects). Une valeur vide s'affiche `<ALL>` (tout le fichier). Les choix valides ne sont pas
+  listés par l'API (`StringWithChoices` n'a que `get` / `set`) ; `Scene3dFile.importAsGroup3dLayer` demande deux arguments
+  (`group3dImporterClass`, `targetParent`) que nous n'avons pas trouvés. Un nœud dont le parent est un Empty exige le parent dans le chemin.
+- **Chemin Media Directory** valable pour le FBX et les images : `"Smode Files/Old TV retro/old_tv_v02_textured.fbx"` (copier les fichiers
+  dans un sous-dossier du Media Directory ; liste des dossiers dans `%APPDATA%\Smode Compose\configurations\Data_15_9.configuration`) ;
+  `reload.trig()` après une copie fraîche. Portable, contrairement à un chemin absolu `G:\...`.
+- **Pas de PBR quand seul l'albédo compte** : un `SurfaceGeometryRenderer` simple avec le seul composant Diffuse (`components.removeAt(1)`
+  retire le Specular). **Surface émissive seule** = ce matériau avec `autoIlluminate.set(1.0)` (c'est un POURCENTAGE : 1.0 = totalement
+  auto-éclairé, la surface ignore les lumières). `PBRSurfaceGeometryRenderer` a `albedo` / `roughness` / `metallic` / `emissive` / `normal`
+  / `occlusion` en `OwnedPointer(Colorizer3d)` (`Uniform3dColorizer`, `Gradient3dColorizer`, `Texture3dColorizer`) mais
+  `Texture3dColorizer.texture` prend une `Texture3d` volumique (par défaut `CheckerBoard3dTexture`) : **aucun colorizer d'image UV trouvé**,
+  donc les cartes PBR image ne se branchent pas ainsi par script.
+- **Partager une compo animée** : un `ReferenceTextureGenerator` pointé directement sur une compo (`location` 1 + `directPointer`) affiche une
+  image FIGÉE (celle de sa création) et ignore la timeline. Utiliser `SharedElement(Compo)` (outil du compo, `content` = la compo ou un clone)
+  et des références `address.location` 0, `address.elementPointer.set(se.getVariableByName("content"))`, `referencer.shared` True : le statut
+  indique « Parameters are shared across all shared references » (normal). La compo est alors évaluée une fois, pilotée par le bloc de
+  la timeline principale du calque qui la référence, et le calque, une map de matériau et une map de lumière montrent la même animation.
+  Après modification d'un matériau, `layer.renderer.referencer.reloadInstance.trig()` sur le calque de géométrie.
+- **Cacher un calque pilote** : un calque dont le bloc doit piloter une compo partagée ne se cache pas avec `activation.set(False)` ni
+  `renderer.opacity.set(0)` (le bloc le réactive / remet l'opacité) ; le ranger hors champ avec `renderer.placement.position.x.set(6.0)`.
+- **Les textures émissives n'éclairent pas la scène dans Smode** : simuler la lueur avec une `PointLight` juste devant la vitre et
+  `directionalMap = EquirectangularDirectionalMapGenerator` (`generator` = une compo 2048 x 1024 = 360 x 180°, `orientation`
+  `EulerAngles`) où la texture occupe un cône (170° de large, 4:3, plus une couleur ocre douce en fond de map pour que les surfaces
+  rasantes s'éclairent un peu). `orientation.y = pi` oriente la map vers l'avant (+Z, le téléviseur regarde +Z dans Smode après la
+  conversion Blender). `attenuation.interval` vaut par défaut (5 m, 10 m) : pas d'atténuation à proximité. Une lueur éclaire à peine une
+  surface coplanaire à la vitre (angle rasant) : boutons, grille et antenne l'attrapent, la façade du meuble à peine ; intensité 8 sur une
+  texture d'interface surtout sombre.
+- Autres classes trouvées : types de `PointLight.directionalMap` `UniformDirectionalMapGenerator`, `EquirectangularDirectionalMapGenerator`
+  (`generator`, `orientation`, `mirror`, `cylindricalDistort`, `topSmoothing`, `bottomSmoothing`), `ReferenceDirectionalMapGenerator`.
+- Un document Compo enregistré sous un nouveau nom comme « projet » reste un **Compo** pour le pont (`script.project` n'existe pas) :
+  `engine.content.customContent.get()` est le document ouvert (`is script.parentElement` vaut True).
+
 ## Audio réactif
 
 `AudioSpectrumLinkSource` — classe native pour injecter en continu l'intensité d'une bande de
@@ -1578,6 +1615,16 @@ les requêtes portant un `Origin` ou un `Host` hors liste (DNS rebinding), sauf 
 que sur les endpoints sans exécution. Utiliser un `ThreadingHTTPServer` pour qu'une requête lente ne bloque pas
 les autres. **Ne pas lire de paramètres Oil (`script.host`, `script.port`) depuis un fil secondaire** : les lire
 dans le fil principal et les passer en argument au fil.
+
+### Moniteur 70 / LED / compo d'ecran : lecons (R15, 31/10/2026)
+
+- **Solid noir derriere la compo d'ecran** : une Compo affichee sur un ecran 3D a un fond transparent, le corps du FBX se voit a travers. Mettre un calque Solid noir opaque tout en bas.
+- **Les cameras sont dans `comp.cameras`** (pas layers/tools) : `comp.cameras.append(cam)`, puis dans un appel suivant `cam.makeCurrent.trig()`.
+- **Un materiau atteint via MaterialBank + `ReferenceGeometryLayerUser` peut ne pas etre applique** a un calque (la couleur ne changeait jamais). Pour un element qui doit reagir visiblement, mettre un `SurfaceGeometryRenderer` direct sur le GeometryLayer.
+- **Animer `autoIlluminate` / le niveau du diffuse ne se voit pas** quand la couleur reste eclairee par l'ambiance : animer plutot la **couleur** de la texture. `UniformTextureGenerator.color` (HsvColor) se cle : `tr, kf = tc.createKeyframe(u.color, t, False)`. `createKeyframe` renvoie `(piste, cle)`.
+- **Supprimer le proprietaire d'un parametre (ex. un materiau) supprime ses pistes automatiquement.** Pas d'API pour supprimer une seule piste, et `parameterTracks.clear()` fait planter Smode.
+- `transport.play` / `transport.pause` sont des Triggers : `.trig()`. Apres un plantage le document sauvegarde peut etre une ancienne version : sauvegarder souvent.
+- `AmbientLight` (intensity, `diffuse.color`), `PlaneGeometryGenerator` (size.width/height ; rotation x -pi/2 pour un sol).
 
 ---
 
