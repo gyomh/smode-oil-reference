@@ -31,6 +31,7 @@
 - [Modifiers, generators and masks (overview)](#modifiers-generators-and-masks-overview)
 - [2D layer placement, masks and exposure](#2d-layer-placement-masks-and-exposure-r15-18-20102026)
 - [2D shapes and groups: ShapeLayer, GroupLayer, 2D rigs](#2d-shapes-and-groups-shapelayer-grouplayer-2d-rigs-r15-30102026)
+- [Particles (R15, 31/10/2026)](#particles-r15-31102026)
 - [Audio reactive](#audio-reactive)
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
@@ -1126,6 +1127,32 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   (`generator`, `orientation`, `mirror`, `cylindricalDistort`, `topSmoothing`, `bottomSmoothing`), `ReferenceDirectionalMapGenerator`.
 - A Compo document that becomes a "project" by saving under a new name keeps being a **Compo** for the bridge (`script.project` does not
   exist): `engine.content.customContent.get()` is the open document (`is script.parentElement` is True).
+
+## Particles (R15, 31/10/2026)
+
+- **`.compo` files use "Node" where the Python API says "Geometry"**: `ParticlesNodeGenerator` = `ParticlesGeometryGenerator`,
+  `SpritePointsNodeRenderer` = `SpritePointsGeometryRenderer`, `PointAttributesNodeModifier` = `PointAttributesGeometryModifier`,
+  `AgeVertexMask` = `AgeGeometryMask`. `createObject` fails on the file names. Other classes keep their name: `GravityField`,
+  `TurbulenceField`, `AttractorField`, `VortexField`, `EventParticleRule`, `PlanePositionSampler`, `LinePositionSampler`,
+  `PointPositionSampler`, `RandomDirectionSampler`. The official examples are plain text in
+  `<Smode>\packs\Features\Particles\*.compo` (field, rule, sprite, collision, colorize examples): the fastest way to learn a setup.
+- Structure: `GeometryLayer` with `generator = ParticlesGeometryGenerator` and `renderer = SpritePointsGeometryRenderer` (direct
+  assignment). Generator: `emissionParameters` (`rate`, `lifeTime`, `speed`, `initialCount`, `preSimulationQuality`, `maximumCount`,
+  `particlesCount` = live count, read only), `fixedUpdateRate` (`.enabled`, `.value`; the examples enable it at 60), `positions`
+  (a sampler), `fields` and `rules` (OwnedVectors), `modifiers`. Renderer: `maps[0]` is already an `ImageFileTextureGenerator`
+  (`.file.path.set("Standard Pack/Texture/Particle/Dot White b.png")`), `size.objectSpaceSize.width/height`.
+- Fade by age: `PointAttributesGeometryModifier` with `selector = AgeGeometryMask` and `opacity` = a `KeyframeFunction`
+  (`.keyframes`, each with `.position` 0..1 = age and `.key` = value; clone a key and `append` to add one).
+- **The generator has its own transport, a `StandalonePlayer` (`generator.transport.player`), not tied to the main timeline.** No
+  block on the main timeline is needed (do not add one for a particle system). Parameters: `launchMode` restartWithActivation,
+  `automateTransport` true, `looping`, `speed`, `targetLength`.
+- **TRAP: the player that comes with a script-created generator never starts.** `transport.state` stays `finalized`, position 0,
+  `particlesCount` 0, even after toggling `activation`, `transport.reset.trig()` or `transport.play.trig()`, while the same setup
+  built in the UI runs. Fix, tested: `t = generator.transport; t.player = Oil.createObject("StandalonePlayer"); t.play.trig()`
+  (state `ready` right after the assignment, `playing` on the next call: 195 particles at 1.95 s). Doing "remove standalone" and
+  adding the player back in the UI also works. Check with `transport.state` / `transport.position` in a LATER call.
+- Fields tested: `GravityField.force.y = -0.3`, `TurbulenceField` (`intensity`, `forceStrength`, `positionStrength`, `noise`,
+  own `transport`). Not tested yet: `AttractorField`, `VortexField`, `EventParticleRule` (conditions: collision, age, mask, colour).
 
 ## Audio reactive
 

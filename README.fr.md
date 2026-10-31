@@ -29,6 +29,7 @@
 - [Timeline (TimelineCue)](#timeline-timelinecue)
 - [Modificateurs, générateurs et masques (aperçu)](#modificateurs-générateurs-et-masques-aperçu)
 - [Placement 2D des calques, masques et exposure](#placement-2d-des-calques-masques-et-exposure-r15-18-20102026)
+- [Particules (R15, 31/10/2026)](#particules-r15-31102026)
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
@@ -900,6 +901,32 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   (`generator`, `orientation`, `mirror`, `cylindricalDistort`, `topSmoothing`, `bottomSmoothing`), `ReferenceDirectionalMapGenerator`.
 - Un document Compo enregistré sous un nouveau nom comme « projet » reste un **Compo** pour le pont (`script.project` n'existe pas) :
   `engine.content.customContent.get()` est le document ouvert (`is script.parentElement` vaut True).
+
+## Particules (R15, 31/10/2026)
+
+- **Les fichiers `.compo` disent « Node » là où l'API Python dit « Geometry »** : `ParticlesNodeGenerator` = `ParticlesGeometryGenerator`,
+  `SpritePointsNodeRenderer` = `SpritePointsGeometryRenderer`, `PointAttributesNodeModifier` = `PointAttributesGeometryModifier`,
+  `AgeVertexMask` = `AgeGeometryMask`. `createObject` échoue sur les noms du fichier. Les autres classes gardent leur nom : `GravityField`,
+  `TurbulenceField`, `AttractorField`, `VortexField`, `EventParticleRule`, `PlanePositionSampler`, `LinePositionSampler`,
+  `PointPositionSampler`, `RandomDirectionSampler`. Les exemples officiels sont du texte brut dans
+  `<Smode>\packs\Features\Particles\*.compo` (champs, règles, sprites, collision, colorize) : le moyen le plus rapide d'apprendre un montage.
+- Structure : `GeometryLayer` avec `generator = ParticlesGeometryGenerator` et `renderer = SpritePointsGeometryRenderer` (affectation
+  directe). Générateur : `emissionParameters` (`rate`, `lifeTime`, `speed`, `initialCount`, `preSimulationQuality`, `maximumCount`,
+  `particlesCount` = nombre vivant, lecture seule), `fixedUpdateRate` (`.enabled`, `.value` ; les exemples l'activent à 60), `positions`
+  (un sampler), `fields` et `rules` (OwnedVectors), `modifiers`. Rendu : `maps[0]` est déjà un `ImageFileTextureGenerator`
+  (`.file.path.set("Standard Pack/Texture/Particle/Dot White b.png")`), `size.objectSpaceSize.width/height`.
+- Fondu selon l'âge : `PointAttributesGeometryModifier` avec `selector = AgeGeometryMask` et `opacity` = une `KeyframeFunction`
+  (`.keyframes`, chacune avec `.position` 0..1 = âge et `.key` = valeur ; cloner une clé et `append` pour en ajouter).
+- **Le générateur a son propre transport, un `StandalonePlayer` (`generator.transport.player`), indépendant de la timeline principale.**
+  Aucun bloc sur la timeline principale n'est nécessaire (ne pas en ajouter pour un système de particules). Paramètres : `launchMode`
+  restartWithActivation, `automateTransport` vrai, `looping`, `speed`, `targetLength`.
+- **PIÈGE : le player livré avec un générateur créé par script ne démarre jamais.** `transport.state` reste `finalized`, position 0,
+  `particlesCount` 0, même après un cycle d'`activation`, `transport.reset.trig()` ou `transport.play.trig()`, alors que le même montage
+  fait dans l'interface tourne. Correctif testé : `t = generator.transport; t.player = Oil.createObject("StandalonePlayer"); t.play.trig()`
+  (état `ready` juste après l'affectation, `playing` à l'appel suivant : 195 particules à 1,95 s). « Remove standalone » puis remise du
+  player dans l'interface marche aussi. Vérifier avec `transport.state` / `transport.position` dans un appel SUIVANT.
+- Champs testés : `GravityField.force.y = -0.3`, `TurbulenceField` (`intensity`, `forceStrength`, `positionStrength`, `noise`,
+  `transport` propre). Pas encore testés : `AttractorField`, `VortexField`, `EventParticleRule` (conditions : collision, âge, masque, couleur).
 
 ## Audio réactif
 
