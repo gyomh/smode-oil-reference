@@ -32,6 +32,8 @@
 - [2D layer placement, masks and exposure](#2d-layer-placement-masks-and-exposure-r15-18-20102026)
 - [2D shapes and groups: ShapeLayer, GroupLayer, 2D rigs](#2d-shapes-and-groups-shapelayer-grouplayer-2d-rigs-r15-30102026)
 - [Particles (R15, 31/10/2026)](#particles-r15-31102026)
+- [3D masks and fragment effects](#3d-masks-and-fragment-effects-r15-03112026)
+- [Function cues](#function-cues-automatic-animation-without-the-main-timeline-r15-03112026)
 - [Audio reactive](#audio-reactive)
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
@@ -1151,8 +1153,62 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   built in the UI runs. Fix, tested: `t = generator.transport; t.player = Oil.createObject("StandalonePlayer"); t.play.trig()`
   (state `ready` right after the assignment, `playing` on the next call: 195 particles at 1.95 s). Doing "remove standalone" and
   adding the player back in the UI also works. Check with `transport.state` / `transport.position` in a LATER call.
-- Fields tested: `GravityField.force.y = -0.3`, `TurbulenceField` (`intensity`, `forceStrength`, `positionStrength`, `noise`,
-  own `transport`). Not tested yet: `AttractorField`, `VortexField`, `EventParticleRule` (conditions: collision, age, mask, colour).
+- Fields: `GravityField.force`, `TurbulenceField` (`intensity`, `forceStrength`, `positionStrength`, `velocityStrength`, `noise`,
+  `curlNoise`, own `transport`), `AttractorField` (`position`, `power`, `disperser`), `LorenzAttractorField` (`center`, `scale`,
+  `rho`, `sigma`, `beta`, `positionStrength`), `VortexField` (`strength`, `attraction`, `attenuation`, `placement`), `FrictionField`
+  (`coefficient`). All have `intensity` and `masks`.
+- **Update of the player trap**: `transport.play.trig()` in the SAME call as the player assignment leaves the state at `ready`; trigger
+  it in a LATER call. Moving the layer into another compo (UI) puts the player back to `ready` / count 0: same fix. Values read inside one
+  call are frozen: sample over several calls.
+- **Rules and groups** (confirmed by the user, 03/11/2026): an `EventParticleRule` = `condition` + `groupFilter` (`.enabled`, `.value`; the
+  `[n]` shown in the UI) + `actions`. Conditions: `AgeParticleCondition` (`threshold` 0..1), `CollisionParticleCondition`
+  (`collidables`), `NullParticleCondition` (always true: use it to apply an action per group). Actions: `BounceParticleAction`
+  (`restitution`, `friction`, `traversalChance`), `EmitParticleAction` (`numParticles`, `lifetime`, `speed`, `directions`,
+  `inheritParticleSpeed`, sub-`actions`), `ColorizeParticleAction` (`color`, an `HsvColor`), `ChangeGroupParticleAction` (UI name
+  "Increase Group by"; `value`, `incremental`). **The group only changes through `ChangeGroupParticleAction`** (not implicitly), and an
+  `EmitParticleAction` needs it in its own `.actions`, otherwise the emitted particles stay in the parent's group and trigger the same
+  rule again (loop). One group per generation (tree, cascade); colour per group = `ColorizeParticleAction` under a `NullParticleCondition`.
+- **Two families**: a particles generator layer (simple emitters: plane / line / point samplers) or an
+  `EmitParticlesGeometryModifier` on any 3D object (same `emissionParameters`, `fields`, `rules`, `fixedUpdateRate`, own `transport`).
+  Its `operatorMode` (`GeometryOperatorMode`, an "Advanced" parameter in the UI): 0 replace, 1 append, 2 prepend; **replace swaps the
+  incoming geometry for the emitted particles** (the generator's own trace vanishes), append keeps both.
+- Limits: `rate` x `lifeTime` has to stay under `maximumCount` (1e6): a `rate` of 1e10 gave `particlesCount` 0. Renderers: `SpritePointsGeometryRenderer`,
+  `SimplePointsGeometryRenderer` (`size` in px, the lightest), `ThickLinesGeometryRenderer`. `MotionLinesGeometryModifier`
+  (`steps`, `limitLength`, `maximumLength`) draws the PAST PATH of each moving particle; `ConnectPointsGeometryModifier` is a proximity
+  graph (every neighbour inside the distance window), not a polyline: very heavy (4 fps at rate 6000, 1 mm). For a continuous trace use enough
+  particles and a sprite larger than the spacing.
+- Keys added with `clone()` + `append()` on a `KeyframeFunction` ended up out of position order (0, 1, 0.5) and only the middle colour
+  showed; sorting them by position fixed it (not confirmed on screen). Colour per group is more reliable.
+
+## 3D masks and fragment effects (R15, 03/11/2026)
+
+- `renderer.effects` can hold `GeometryMaskDiscardFragmentModifier` ("3D Discard": `invert`, `threshold`, `masks`; binary, `invert` makes a
+  hole in the mask volume) and `GeometryMaskAlphaFragmentModifier` ("3D Alpha": `masks` only, multiplies the alpha by the mask value: soft).
+- Masks: `BoxGeometryMask` (`size`, `placement`, `exponent`, `roudness`, `roudnessRadius`), `SphereGeometryMask`, `CylinderGeometryMask`
+  (`capsulify`), `LinearGeometryMask`, `NoiseGeometryMask` (own `transport`), `FresnelGeometryMask` (`exponent` 5, `ratio` 1; uses the
+  normals, poor on a very deformed mesh), `RandomGeometryMask`, `FunctionGeometryMask`, `TextureLayerGeometryMask`, `ColorGeometryMask`,
+  `AgeGeometryMask`. No explicit feather: `exponent` softens the edge (0 = hard edge, confirmed by the user).
+- `Displace` moves vertices along their normals (a cube's faces separate); `Transform3d` + a mask (noise) modulates the strength of the
+  transform per point. Several copies of one compo: a `GroupTextureRenderer` holding N `SingleTextureRenderer` redisplays ONE compo render.
+
+## Function cues: automatic animation without the main timeline (R15, 03/11/2026)
+
+- UI: right-click the PARAMETER to animate: Smode creates the right `FunctionCue` (type `Meters`...) already linked, min/max in the parameter's
+  unit, `launchMode` restartWithActivation (starts alone). The element menu (Animation > Footage Cue / Timeline / control cues) does not offer them.
+- Script: `Oil.createObject("FunctionCue(Meters)")` (bare `FunctionCue` is abstract), `cue.function = Oil.createObject(
+  "ParametricScalarFunction(Seconds, Meters)")` (`None` by default), `function.shape = LinearRampFunctionShape | NoiseFunctionShape`
+  (`frequency` 10, `contrast`, `type` 0 simplex / 1 perlin), `function.parameters` (`minimum`, `maximum`, `period`, `phase`, `offset`,
+  `wrapMode`, `repetitions`), `cue.parameters` (`looping`, `targetLength`, `speed`, `launchMode`), `animationBank.animations.append(cue)`,
+  `cue.targets.append(ParameterLinkTarget)` with `.target.set(param)`, then `cue.transport.play.trig()` in a later call.
+- **Linear ramp needs `phase` = 0.5**: it then starts at `minimum` and goes min -> max in one `period`; with phase 0 it started mid-range at half
+  slope (measured on the real output; reading the parameters back proved nothing). `wrapMode` 1 repeat = abrupt return (scope flyback).
+- A linked `Parameter` does NOT forward to its own targets when a cue writes into its `.value` (the link only reacts to UI changes): link the cue
+  straight to the final target. `timeline.parameterTracks` is a Map (`.items()`, no index): neutralise a track with `function.keyframes.clear()`
+  + `activation.set(False)`.
+- Range mapping: `RemapLinkModifier` (`inputRange`, `outputRange` = `Interval(Real)`) in `ParameterLinkTarget.modifiers` (tested: output 0.5..0.5 freezes
+  the target); `FunctionLinkModifier(Percentage, Meters)` can be created with its types in brackets. A cue in the target's own unit is simpler.
+- A 4 m high frame: `AffineCamera` at distance 3.4641, vertical fov 60 deg (1920x1080): 25 % from the top = +1 m.
+
 
 ## Audio reactive
 

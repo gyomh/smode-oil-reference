@@ -30,6 +30,8 @@
 - [Modificateurs, générateurs et masques (aperçu)](#modificateurs-générateurs-et-masques-aperçu)
 - [Placement 2D des calques, masques et exposure](#placement-2d-des-calques-masques-et-exposure-r15-18-20102026)
 - [Particules (R15, 31/10/2026)](#particules-r15-31102026)
+- [Masques 3D et effets de rendu](#masques-3d-et-effets-de-rendu-r15-03112026)
+- [Cues de fonction](#cues-de-fonction--animation-automatique-sans-la-timeline-principale-r15-03112026)
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
@@ -925,8 +927,62 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   fait dans l'interface tourne. Correctif testé : `t = generator.transport; t.player = Oil.createObject("StandalonePlayer"); t.play.trig()`
   (état `ready` juste après l'affectation, `playing` à l'appel suivant : 195 particules à 1,95 s). « Remove standalone » puis remise du
   player dans l'interface marche aussi. Vérifier avec `transport.state` / `transport.position` dans un appel SUIVANT.
-- Champs testés : `GravityField.force.y = -0.3`, `TurbulenceField` (`intensity`, `forceStrength`, `positionStrength`, `noise`,
-  `transport` propre). Pas encore testés : `AttractorField`, `VortexField`, `EventParticleRule` (conditions : collision, âge, masque, couleur).
+- Champs : `GravityField.force`, `TurbulenceField` (`intensity`, `forceStrength`, `positionStrength`, `velocityStrength`, `noise`,
+  `curlNoise`, `transport` propre), `AttractorField` (`position`, `power`, `disperser`), `LorenzAttractorField` (`center`, `scale`,
+  `rho`, `sigma`, `beta`, `positionStrength`), `VortexField` (`strength`, `attraction`, `attenuation`, `placement`), `FrictionField`
+  (`coefficient`). Tous ont `intensity` et `masks`.
+- **Mise à jour du piège du player** : `transport.play.trig()` dans le MÊME appel que l'affectation laisse l'état à `ready` ; le déclencher dans
+  un appel SUIVANT. Déplacer le calque dans une autre compo (interface) remet le player à `ready` / 0 particule : même correctif. Les valeurs lues
+  dans un appel sont figées : échantillonner sur plusieurs appels.
+- **Règles et groupes** (confirmé par l'utilisateur, 03/11/2026) : une `EventParticleRule` = `condition` + `groupFilter` (`.enabled`, `.value` ; le
+  `[n]` affiché dans l'interface) + `actions`. Conditions : `AgeParticleCondition` (`threshold` 0..1), `CollisionParticleCondition`
+  (`collidables`), `NullParticleCondition` (toujours vraie : sert à appliquer une action par groupe). Actions : `BounceParticleAction`
+  (`restitution`, `friction`, `traversalChance`), `EmitParticleAction` (`numParticles`, `lifetime`, `speed`, `directions`,
+  `inheritParticleSpeed`, sous-`actions`), `ColorizeParticleAction` (`color`, une `HsvColor`), `ChangeGroupParticleAction` (nom interface
+  « Increase Group by » ; `value`, `incremental`). **Le groupe ne change que par `ChangeGroupParticleAction`** (pas implicitement), et un
+  `EmitParticleAction` doit l'avoir dans ses propres `.actions`, sinon les particules émises restent dans le groupe du parent et redéclenchent la
+  même règle (boucle). Un groupe par génération (arbre, cascade) ; couleur par groupe = `ColorizeParticleAction` sous une `NullParticleCondition`.
+- **Deux familles** : un calque générateur de particules (émetteurs simples : samplers plan / ligne / point) ou un
+  `EmitParticlesGeometryModifier` sur n'importe quel objet 3D (mêmes `emissionParameters`, `fields`, `rules`, `fixedUpdateRate`, `transport` propre).
+  Son `operatorMode` (`GeometryOperatorMode`, paramètre « Advanced » de l'interface) : 0 replace, 1 append, 2 prepend ; **replace remplace la
+  géométrie entrante par les particules émises** (la trace du générateur disparaît), append garde les deux.
+- Limites : `rate` x `lifeTime` doit rester sous `maximumCount` (1e6) : un `rate` de 1e10 a donné `particlesCount` 0. Rendus : `SpritePointsGeometryRenderer`,
+  `SimplePointsGeometryRenderer` (`size` en px, le plus léger), `ThickLinesGeometryRenderer`. `MotionLinesGeometryModifier`
+  (`steps`, `limitLength`, `maximumLength`) dessine le TRAJET PASSÉ de chaque particule en mouvement ; `ConnectPointsGeometryModifier` est un graphe de
+  proximité (toutes les voisines dans la fenêtre), pas une polyligne : très lourd (4 fps à rate 6000, 1 mm). Pour une trace continue : assez de
+  particules et un sprite plus gros que l'espacement.
+- Des clés ajoutées par `clone()` + `append()` sur une `KeyframeFunction` se sont retrouvées hors de l'ordre des positions (0, 1, 0,5) et seule la couleur
+  du milieu s'affichait ; les trier par position a corrigé (non confirmé à l'écran). La couleur par groupe est plus fiable.
+
+## Masques 3D et effets de rendu (R15, 03/11/2026)
+
+- `renderer.effects` peut contenir `GeometryMaskDiscardFragmentModifier` (« 3D Discard » : `invert`, `threshold`, `masks` ; binaire, `invert` fait un
+  trou dans le volume du masque) et `GeometryMaskAlphaFragmentModifier` (« 3D Alpha » : `masks` seulement, multiplie l'alpha par la valeur du masque : doux).
+- Masques : `BoxGeometryMask` (`size`, `placement`, `exponent`, `roudness`, `roudnessRadius`), `SphereGeometryMask`, `CylinderGeometryMask`
+  (`capsulify`), `LinearGeometryMask`, `NoiseGeometryMask` (`transport` propre), `FresnelGeometryMask` (`exponent` 5, `ratio` 1 ; utilise les
+  normales, mauvais sur un maillage très déformé), `RandomGeometryMask`, `FunctionGeometryMask`, `TextureLayerGeometryMask`, `ColorGeometryMask`,
+  `AgeGeometryMask`. Pas de feather explicite : `exponent` adoucit le bord (0 = bord dur, confirmé par l'utilisateur).
+- `Displace` déplace les sommets le long de leurs normales (les faces d'un cube se séparent) ; `Transform3d` + un masque (noise) module la force de la
+  transformation point par point. Plusieurs copies d'une compo : un `GroupTextureRenderer` contenant N `SingleTextureRenderer` réaffiche UN seul rendu de compo.
+
+## Cues de fonction : animation automatique sans la timeline principale (R15, 03/11/2026)
+
+- Interface : clic droit sur le PARAMÈTRE à animer : Smode crée la bonne `FunctionCue` (type `Meters`...) déjà liée, min/max dans l'unité du paramètre,
+  `launchMode` restartWithActivation (démarre seule). Le menu des éléments (Animation > Footage Cue / Timeline / cues de contrôle) ne les propose pas.
+- Script : `Oil.createObject("FunctionCue(Meters)")` (`FunctionCue` seul est abstrait), `cue.function = Oil.createObject(
+  "ParametricScalarFunction(Seconds, Meters)")` (`None` par défaut), `function.shape = LinearRampFunctionShape | NoiseFunctionShape`
+  (`frequency` 10, `contrast`, `type` 0 simplex / 1 perlin), `function.parameters` (`minimum`, `maximum`, `period`, `phase`, `offset`,
+  `wrapMode`, `repetitions`), `cue.parameters` (`looping`, `targetLength`, `speed`, `launchMode`), `animationBank.animations.append(cue)`,
+  `cue.targets.append(ParameterLinkTarget)` avec `.target.set(param)`, puis `cue.transport.play.trig()` dans un appel suivant.
+- **La rampe linéaire exige `phase` = 0,5** : elle part alors de `minimum` et va de min à max en une `period` ; avec la phase à 0 elle partait du milieu à
+  demi-pente (mesuré sur la sortie réelle ; relire les paramètres ne prouvait rien). `wrapMode` 1 repeat = retour brutal (retour de faisceau).
+- Un `Parameter` lié NE retransmet PAS à ses propres cibles quand une cue écrit dans sa `.value` (le lien ne réagit qu'à un changement venu de l'interface) :
+  lier la cue directement à la cible finale. `timeline.parameterTracks` est une Map (`.items()`, pas d'index) : neutraliser une piste avec
+  `function.keyframes.clear()` + `activation.set(False)`.
+- Mise en correspondance : `RemapLinkModifier` (`inputRange`, `outputRange` = `Interval(Real)`) dans `ParameterLinkTarget.modifiers` (testé : sortie
+  0,5..0,5 fige la cible) ; `FunctionLinkModifier(Percentage, Meters)` se crée avec ses types entre parenthèses. Une cue dans l'unité de la cible est plus simple.
+- Cadre de 4 m de haut : `AffineCamera` à la distance 3,4641, fov vertical 60° (1920x1080) : 25 % depuis le haut = +1 m.
+
 
 ## Audio réactif
 
