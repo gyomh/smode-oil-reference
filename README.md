@@ -1237,6 +1237,20 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   the random selector, shared system rate 1000 / lifeTime 2 / speed 0.2 / turbulence (force 100, position 1, velocity 1) / colour and opacity by age
   / 4 rules, about 5 million points in `SimplePointsGeometryRenderer`, feedback + blur on the compo (not measured in fps).
 
+- **Filling a shape (text) with instances: mask BEFORE the Instantiate** (validated by the user, who rebuilt it by hand). On the plane, put a
+  `RandomPointsGeometryModifier` (`count`, `seed`, `masks`, `operatorMode`; the official example is "Random Points Modifier (on a Plane)") with a
+  `TextureLayerGeometryMask` in ITS `masks` (`generator` = a copy of a sub-Compo holding a text layer; it accepts a `Compo`), then the
+  `InstantiateGeometryModifier` after it (`modifiers.insert(0, randomPoints)`). The points land only inside the letters and each gets one
+  system. Putting the same mask on the Instantiate's own `masks`, or a 2D `MaskTextureModifier` (`TextureLayerTextureMask`, `ChannelColorSelector`
+  channel 1 luminance + `multiplyByAlpha`) on the compo, works but only crops the picture: long strands drown the letters. No "delete points by
+  mask" modifier exists in the examples; Random Points + mask plays that role.
+- Keep the strands shorter than a letter stroke (`lifeTime` ~0.5, lower turbulence `positionStrength`); a plane stood up facing the camera
+  is rotated 90 deg around x. **Animating the `seed`** with a `FunctionCue(PositiveInteger)` (ramp 0..205 over 3 s, speed 0.08, looping, target =
+  `randomPoints.seed.value`) re-sows the points inside the letters: the strands "grow back" (not seen by Claude, reported by the user).
+- Geometry modifiers found in the official examples: Repeat, Transform3d, Displace, Colorize, ColorizeFunction, Instantiate, Scale, ScaleFunction,
+  UVTransform, UVCameraMapping, Rotate, ExtrudeShape, Mirror, Opacity, SolidifyPath, EmitParticles, PositionNoise, PointAttributes, RandomPoints,
+  Quantize, ColorizeTextureLayer, TransformTriangles, ConnectPoints, Group, Compute, MotionLines, Demultiply, Spherify.
+
 ## Audio reactive
 
 `AudioSpectrumLinkSource` — native class to continuously inject the intensity of a frequency band

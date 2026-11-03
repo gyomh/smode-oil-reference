@@ -1011,6 +1011,20 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   le sélecteur aléatoire, système partagé rate 1000 / lifeTime 2 / speed 0,2 / turbulence (force 100, position 1, vitesse 1) / couleur et opacité selon l'âge
   / 4 règles, environ 5 millions de points en `SimplePointsGeometryRenderer`, feedback + flou sur la compo (non mesuré en fps).
 
+- **Remplir une forme (texte) d'instances : masque AVANT l'Instantiate** (validé par l'utilisateur, qui l'a refait à la main). Sur le plan, placer un
+  `RandomPointsGeometryModifier` (`count`, `seed`, `masks`, `operatorMode` ; l'exemple officiel est « Random Points Modifier (on a Plane) ») avec un
+  `TextureLayerGeometryMask` dans SES `masks` (`generator` = une copie d'une sous-Compo contenant un calque de texte ; il accepte une `Compo`), puis
+  l'`InstantiateGeometryModifier` après lui (`modifiers.insert(0, randomPoints)`). Les points ne tombent que dans les lettres et chacun reçoit un
+  système. Mettre le même masque dans les `masks` de l'Instantiate, ou un `MaskTextureModifier` 2D (`TextureLayerTextureMask`, `ChannelColorSelector`
+  canal 1 luminance + `multiplyByAlpha`) sur la compo, marche mais ne fait que découper l'image : de longs brins noient les lettres. Il n'existe pas de
+  modifier « supprimer des points par masque » dans les exemples ; Random Points + masque joue ce rôle.
+- Garder des brins plus courts que l'épaisseur d'un trait de lettre (`lifeTime` ~0,5, `positionStrength` de turbulence plus faible) ; un plan debout face à la
+  caméra est tourné de 90° autour de x. **Animer la `seed`** avec une `FunctionCue(PositiveInteger)` (rampe 0..205 sur 3 s, vitesse 0,08, en boucle, cible =
+  `randomPoints.seed.value`) re-sème les points dans les lettres : les brins « repoussent » (non vu par Claude, rapporté par l'utilisateur).
+- Modifiers de géométrie trouvés dans les exemples officiels : Repeat, Transform3d, Displace, Colorize, ColorizeFunction, Instantiate, Scale, ScaleFunction,
+  UVTransform, UVCameraMapping, Rotate, ExtrudeShape, Mirror, Opacity, SolidifyPath, EmitParticles, PositionNoise, PointAttributes, RandomPoints,
+  Quantize, ColorizeTextureLayer, TransformTriangles, ConnectPoints, Group, Compute, MotionLines, Demultiply, Spherify.
+
 ## Audio réactif
 
 `AudioSpectrumLinkSource` — classe native pour injecter en continu l'intensité d'une bande de
