@@ -34,6 +34,7 @@
 - [Particles (R15, 31/10/2026)](#particles-r15-31102026)
 - [3D masks and fragment effects](#3d-masks-and-fragment-effects-r15-03112026)
 - [Function cues](#function-cues-automatic-animation-without-the-main-timeline-r15-03112026)
+- [Multiplying particle systems](#multiplying-particle-systems-shared-element-instantiate-point-renderers-r15-03112026)
 - [Audio reactive](#audio-reactive)
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
@@ -1209,6 +1210,32 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   the target); `FunctionLinkModifier(Percentage, Meters)` can be created with its types in brackets. A cue in the target's own unit is simpler.
 - A 4 m high frame: `AffineCamera` at distance 3.4641, vertical fov 60 deg (1920x1080): 25 % from the top = +1 m.
 
+
+## Multiplying particle systems: shared element, Instantiate, point renderers (R15, 03/11/2026)
+
+- **Shared element**: the particles generator can live in a `SharedElement(GeometryV9Generator)` (in `compo.tools`, `.content` = the
+  generator) and the layer uses a `ReferenceGeometryV9Generator` (`.referencer`: `address`, `shared` True, `localElementSpace`,
+  `reloadInstance`; its own `modifiers`). The simulation is computed once; cloning a reference works (status success; `directPointer`
+  stays `None`, the location is `internalIndirect`).
+- **`InstantiateGeometryModifier`** (Operators): `generators` (OwnedVector, references allowed), `referential`, `selector` (a
+  `RandomGeometryMask` picking which generator goes to which vertex), `masks`, `intensity`. **One copy per vertex of the incoming geometry**:
+  `SegmentGeometryGenerator.precision` n gives n+1 vertices (precision 3 = 4 particle systems, confirmed), a `PlaneGeometryGenerator`
+  `precision` (`Precision2d`, `uniform` False before `x`/`y`) gives (x+1)(y+1). `referential` (`ReferentialChoice`: 0 vertex, 1 world,
+  2 camera, 3 sphericalCamera) is the ORIENTATION frame of each copy, not its position: with `vertex`, moving the last point of a segment
+  rotates the frame. A new Instantiate already holds a default `BoxGeometryGenerator` in `generators`: `removeAt(0)`.
+- **"No Lines Adjacency information in geometry"** (red cross on the layer): a `ThickLinesGeometryRenderer` on point geometry (particles). Use a
+  `SimplePointsGeometryRenderer` (`size` in px, the lightest) or add a `MotionLinesGeometryModifier` after the Instantiate (status turned to
+  success; not judged on screen). The error hid the fact that the per-vertex instancing worked.
+- `DemultiplyGeometryModifier` (`instances`, `strength` in m, `differentiation`, `interval`, `noise`, own `transport`) duplicates the geometry N times,
+  offset by noise: 100 copies of 10 000 points in point rendering stayed light.
+- **Emission direction**: `TargetDirectionSampler` (`target`, `spread`) shoots every particle toward a point (default 0,0,0): a stream of particles
+  from the layer's position toward the target. The emitter position = the layer placement (+ the sampler placement). A `TurbulenceField` has NO
+  position: it fills the space (curl noise, `noise.scale` = feature size). `positionStrength` moves the particles directly (visible);
+  `forceStrength` 356 with speed 10 showed nothing because the particles leave a 4 m frame in a fraction of a second. Whether
+  `AttractorField.position` is local or world is not tested.
+- Validated look (user: "very beautiful"): plane 4.46 x 2.4 m, precision 50 x 50 (2601 vertices), 3 references to 3 colour variants picked by
+  the random selector, shared system rate 1000 / lifeTime 2 / speed 0.2 / turbulence (force 100, position 1, velocity 1) / colour and opacity by age
+  / 4 rules, about 5 million points in `SimplePointsGeometryRenderer`, feedback + blur on the compo (not measured in fps).
 
 ## Audio reactive
 

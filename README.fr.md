@@ -32,6 +32,7 @@
 - [Particules (R15, 31/10/2026)](#particules-r15-31102026)
 - [Masques 3D et effets de rendu](#masques-3d-et-effets-de-rendu-r15-03112026)
 - [Cues de fonction](#cues-de-fonction--animation-automatique-sans-la-timeline-principale-r15-03112026)
+- [Multiplier un système de particules](#multiplier-un-système-de-particules--élément-partagé-instantiate-rendus-en-points-r15-03112026)
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
@@ -983,6 +984,32 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   0,5..0,5 fige la cible) ; `FunctionLinkModifier(Percentage, Meters)` se crée avec ses types entre parenthèses. Une cue dans l'unité de la cible est plus simple.
 - Cadre de 4 m de haut : `AffineCamera` à la distance 3,4641, fov vertical 60° (1920x1080) : 25 % depuis le haut = +1 m.
 
+
+## Multiplier un système de particules : élément partagé, Instantiate, rendus en points (R15, 03/11/2026)
+
+- **Élément partagé** : le générateur de particules peut vivre dans un `SharedElement(GeometryV9Generator)` (dans `compo.tools`, `.content` = le
+  générateur) et le calque utilise un `ReferenceGeometryV9Generator` (`.referencer` : `address`, `shared` True, `localElementSpace`,
+  `reloadInstance` ; ses propres `modifiers`). La simulation est calculée une seule fois ; cloner une référence fonctionne (statut success ;
+  `directPointer` reste `None`, la location est `internalIndirect`).
+- **`InstantiateGeometryModifier`** (Opérateurs) : `generators` (OwnedVector, références acceptées), `referential`, `selector` (un
+  `RandomGeometryMask` qui choisit quel générateur va à quel sommet), `masks`, `intensity`. **Une copie par sommet de la géométrie entrante** :
+  `SegmentGeometryGenerator.precision` n donne n+1 sommets (precision 3 = 4 systèmes de particules, confirmé), un `PlaneGeometryGenerator`
+  `precision` (`Precision2d`, `uniform` à False avant `x`/`y`) donne (x+1)(y+1). `referential` (`ReferentialChoice` : 0 vertex, 1 world,
+  2 camera, 3 sphericalCamera) est le repère d'ORIENTATION de chaque copie, pas sa position : avec `vertex`, déplacer le dernier point d'un segment
+  fait tourner le repère. Un Instantiate neuf contient déjà un `BoxGeometryGenerator` par défaut dans `generators` : `removeAt(0)`.
+- **« No Lines Adjacency information in geometry »** (croix rouge sur le calque) : un `ThickLinesGeometryRenderer` sur de la géométrie de points
+  (particules). Utiliser un `SimplePointsGeometryRenderer` (`size` en px, le plus léger) ou ajouter un `MotionLinesGeometryModifier` après l'Instantiate
+  (statut passé à success ; non jugé à l'écran). L'erreur masquait le fait que l'instanciation par sommet fonctionnait.
+- `DemultiplyGeometryModifier` (`instances`, `strength` en m, `differentiation`, `interval`, `noise`, `transport` propre) duplique la géométrie N fois,
+  décalée par du bruit : 100 copies de 10 000 points en rendu de points sont restées légères.
+- **Direction d'émission** : `TargetDirectionSampler` (`target`, `spread`) tire toutes les particules vers un point (défaut 0,0,0) : un flux de
+  particules de la position du calque vers la cible. La position de l'émetteur = le placement du calque (+ celui du sampler). Une `TurbulenceField`
+  N'A PAS de position : elle remplit l'espace (curl noise, `noise.scale` = taille des motifs). `positionStrength` déplace directement les particules
+  (visible) ; `forceStrength` 356 avec une vitesse 10 ne montrait rien car les particules sortent d'un cadre de 4 m en une fraction de seconde. Le caractère
+  local ou monde de `AttractorField.position` n'est pas testé.
+- Rendu validé (utilisateur : « très beau ») : plan 4,46 x 2,4 m, precision 50 x 50 (2601 sommets), 3 références vers 3 variantes de couleur choisies par
+  le sélecteur aléatoire, système partagé rate 1000 / lifeTime 2 / speed 0,2 / turbulence (force 100, position 1, vitesse 1) / couleur et opacité selon l'âge
+  / 4 règles, environ 5 millions de points en `SimplePointsGeometryRenderer`, feedback + flou sur la compo (non mesuré en fps).
 
 ## Audio réactif
 
