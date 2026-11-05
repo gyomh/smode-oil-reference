@@ -33,6 +33,7 @@
 - [Masques 3D et effets de rendu](#masques-3d-et-effets-de-rendu-r15-03112026)
 - [Cues de fonction](#cues-de-fonction--animation-automatique-sans-la-timeline-principale-r15-03112026)
 - [Multiplier un système de particules](#multiplier-un-système-de-particules--élément-partagé-instantiate-rendus-en-points-r15-03112026)
+- [Particules : texte en sable, liens de banque](#particules--texte-en-sable-liens-de-banque-lire-les-erreurs-r15-05112026)
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
@@ -1024,6 +1025,33 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
 - Modifiers de géométrie trouvés dans les exemples officiels : Repeat, Transform3d, Displace, Colorize, ColorizeFunction, Instantiate, Scale, ScaleFunction,
   UVTransform, UVCameraMapping, Rotate, ExtrudeShape, Mirror, Opacity, SolidifyPath, EmitParticles, PositionNoise, PointAttributes, RandomPoints,
   Quantize, ColorizeTextureLayer, TransformTriangles, ConnectPoints, Group, Compute, MotionLines, Demultiply, Spherify.
+
+## Particules : texte en sable, liens de banque, lire les erreurs (R15, 05/11/2026)
+
+- **Lire un message d'erreur complet** : `obj.liveStatus.toString()` est tronqué (`error: Ran...`) ; `obj.liveStatus.success.toString()` donne le texte
+  entier. C'est ainsi qu'a été trouvé le point suivant.
+- **`TextGeometryGenerator` est un contour (spline), pas une surface** : un `EmitParticlesGeometryModifier` dessus échoue avec « Random emission is not
+  implemented in geometries of type Text Spline Geometry ». Pour émettre depuis un mot : `PlaneGeometryGenerator` -> `RandomPointsGeometryModifier` avec un
+  `TextureLayerGeometryMask` (`generator` = une `Compo` contenant un `TextLayer`) -> `EmitParticlesGeometryModifier` (`operatorMode` replace) ->
+  `PointAttributesGeometryModifier` (opacité selon l'âge). Tous les statuts success, grains produits.
+- Un `Compo` créé par `Oil.createObject("Compo")` a une **résolution 0 x 0** : mettre `processor.resolution.linked` à False, puis `width` / `height`
+  (1920 x 1080) avant de l'utiliser comme source de masque. `LocalTextGenerator` : `text` (défaut « SMODE »), `style.size` (px), `style.bold`,
+  `style.foreground` (`HsvColor`, `red`/`green`/`blue`).
+- **Sable emporté par le vent** (vérifié à l'écran) : grains émis en rafale (`rate` 50000 puis 0 par une clé Step à 0,6 s), `speed` 0, `lifeTime` 9 +- 1,5,
+  `SimplePointsGeometryRenderer`. **Un `GravityField` utilisé comme vent est une force UNIFORME : tous les grains partent d'un bloc.** La dissolution
+  progressive vient d'un `TurbulenceField` à bruit de petite échelle (`noise.scale` 0,25 m, `octaves` 2, `forceStrength` 24, `positionStrength` 1,0) avec un
+  vent faible et un `FrictionField` : le mot s'effrite par le haut puis s'étale en nuage. L'`intensity` d'un champ est animable (rampe linéaire de 3 à 5 s).
+- Timeline d'un tel système : `createKeyframe` sur `emissionParameters.rate` (Step garde la valeur), sur l'`intensity` de chaque champ ; un bloc de calque de
+  12 s en boucle relance l'émetteur (`restartWithActivation`) à chaque tour. Pour remplacer des pistes : `elementTracks.clear()` et `parameterTracks.clear()`
+  D'ABORD, puis supprimer le calque. Sauter dans la boucle après la fenêtre d'émission donne un écran vide (les grains ne sont émis que pendant les 0,6 premières secondes).
+- **Liens de banque** : `Parameter(Trigger)` -> `manualEmit.emitNow` fonctionne (un Kick a émis 1601 particules) ; une plage de `RemapLinkModifier` inversée
+  (begin > end) s'écrase sur une seule valeur, utiliser begin < end avec `inverse` à True ; les liens d'une banque neuve ne s'appliquent qu'après
+  `parameter.applyNow.trig()` ; une palette par paliers = `FunctionLinkModifier(Percentage, Angle)` dont la `KeyframeFunction(Percentage, Angle)` démarre avec
+  0 clé (créer des objets `Keyframe(Percentage, Angle)` à la main, Step par défaut) pilotant la `hue` d'un `HueSaturationLuminanceTextureModifier` placé EN PREMIER dans les effets de la compo.
+- **Voir le rendu** : le viewport peut être capturé (voir « Vérifier visuellement ») : deux scripts PowerShell (rectangle de la fenêtre + `CopyFromScreen` : une capture simple, et une planche de contact du
+  viewport à intervalle fixe, qui refuse de capturer si Smode n'est pas au premier plan) ; la fenêtre Smode peut être à des coordonnées négatives (-8,-8).
+- Un set VJ à 4 systèmes (MotionLines + feedback + flou en 1080p, quatre systèmes actifs à opacité 0) tournait à environ 10 fps sur la machine de l'auteur (rapporté,
+  non mesuré par script) : lire les ms / fps de la barre d'état avant de garder un tel set.
 
 ## Audio réactif
 

@@ -35,6 +35,7 @@
 - [3D masks and fragment effects](#3d-masks-and-fragment-effects-r15-03112026)
 - [Function cues](#function-cues-automatic-animation-without-the-main-timeline-r15-03112026)
 - [Multiplying particle systems](#multiplying-particle-systems-shared-element-instantiate-point-renderers-r15-03112026)
+- [Particles: text of sand, bank links](#particles-text-of-sand-bank-links-reading-errors-r15-05112026)
 - [Audio reactive](#audio-reactive)
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
@@ -1250,6 +1251,33 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
 - Geometry modifiers found in the official examples: Repeat, Transform3d, Displace, Colorize, ColorizeFunction, Instantiate, Scale, ScaleFunction,
   UVTransform, UVCameraMapping, Rotate, ExtrudeShape, Mirror, Opacity, SolidifyPath, EmitParticles, PositionNoise, PointAttributes, RandomPoints,
   Quantize, ColorizeTextureLayer, TransformTriangles, ConnectPoints, Group, Compute, MotionLines, Demultiply, Spherify.
+
+## Particles: text of sand, bank links, reading errors (R15, 05/11/2026)
+
+- **Reading a full error message**: `obj.liveStatus.toString()` is truncated (`error: Ran...`); `obj.liveStatus.success.toString()` returns the whole
+  text. This is how the next point was found.
+- **`TextGeometryGenerator` is an outline (spline), not a surface**: an `EmitParticlesGeometryModifier` on it fails with "Random emission is not
+  implemented in geometries of type Text Spline Geometry". To emit from a word: `PlaneGeometryGenerator` -> `RandomPointsGeometryModifier` with a
+  `TextureLayerGeometryMask` (`generator` = a `Compo` holding a `TextLayer`) -> `EmitParticlesGeometryModifier` (`operatorMode` replace) ->
+  `PointAttributesGeometryModifier` (opacity by age). All statuses success, grains produced.
+- A `Compo` made with `Oil.createObject("Compo")` has a **0 x 0 resolution**: set `processor.resolution.linked` False, then `width` / `height`
+  (1920 x 1080) before using it as a mask source. `LocalTextGenerator`: `text` (default "SMODE"), `style.size` (px), `style.bold`,
+  `style.foreground` (`HsvColor`, `red`/`green`/`blue`).
+- **Sand blown away** (checked on screen): grains emitted in a burst (`rate` 50000 then 0 by a Step key at 0.6 s), `speed` 0, `lifeTime` 9 +- 1.5,
+  `SimplePointsGeometryRenderer`. **A `GravityField` used as wind is a UNIFORM force: every grain leaves as one block.** The gradual break-up comes from
+  a `TurbulenceField` with a small-scale noise (`noise.scale` 0.25 m, `octaves` 2, `forceStrength` 24, `positionStrength` 1.0) plus a weak wind and a
+  `FrictionField`: the word crumbles from the top, then spreads into a cloud. Fields' `intensity` is keyable (Linear ramp 3 -> 5 s).
+- Timeline of such a system: `createKeyframe` on `emissionParameters.rate` (Step holds the value), on each field's `intensity`; a layer block of 12 s in
+  a loop restarts the emitter (`restartWithActivation`) at every turn. To replace tracks: `elementTracks.clear()` and `parameterTracks.clear()`
+  FIRST, then remove the layer. Jumping inside the loop after the emission window shows an empty screen (the grains are only emitted in the first 0.6 s).
+- **Bank links**: `Parameter(Trigger)` -> `manualEmit.emitNow` works (a Kick emitted 1601 particles); a reversed `RemapLinkModifier` range (begin > end)
+  collapses to a single value, use begin < end with `inverse` True; the links of a new bank only apply after `parameter.applyNow.trig()`;
+  a stepped palette = `FunctionLinkModifier(Percentage, Angle)` whose `KeyframeFunction(Percentage, Angle)` starts with 0 keys (create
+  `Keyframe(Percentage, Angle)` objects by hand, Step by default) driving a `HueSaturationLuminanceTextureModifier.hue` placed FIRST in the compo effects.
+- **Seeing the render**: the viewport can be captured (see "Checking visually"): two PowerShell scripts (window rectangle + `CopyFromScreen`: one single capture, and a
+  contact sheet of the viewport at a fixed interval, refusing to capture if Smode is not on top); the Smode window can sit at negative coordinates (-8,-8).
+- A 4-system VJ set (MotionLines + feedback + blur at 1080p, four systems running at opacity 0) ran at about 10 fps on the author's machine (reported, not
+  measured by script): check the ms / fps in the status bar before keeping such a set.
 
 ## Audio reactive
 
