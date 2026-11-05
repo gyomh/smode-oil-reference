@@ -34,6 +34,7 @@
 - [Cues de fonction](#cues-de-fonction--animation-automatique-sans-la-timeline-principale-r15-03112026)
 - [Multiplier un système de particules](#multiplier-un-système-de-particules--élément-partagé-instantiate-rendus-en-points-r15-03112026)
 - [Particules : texte en sable, liens de banque](#particules--texte-en-sable-liens-de-banque-lire-les-erreurs-r15-05112026)
+- [Shaders ISF à plusieurs vidéos, états de banque, données en texture](#shaders-isf-à-plusieurs-vidéos-états-de-banque-données-en-texture-r15-05112026)
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
@@ -1052,6 +1053,61 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   viewport à intervalle fixe, qui refuse de capturer si Smode n'est pas au premier plan) ; la fenêtre Smode peut être à des coordonnées négatives (-8,-8).
 - Un set VJ à 4 systèmes (MotionLines + feedback + flou en 1080p, quatre systèmes actifs à opacité 0) tournait à environ 10 fps sur la machine de l'auteur (rapporté,
   non mesuré par script) : lire les ms / fps de la barre d'état avant de garder un tel set.
+
+## Shaders ISF à plusieurs vidéos, états de banque, données en texture (R15, 05/11/2026)
+
+Vérifié en construisant un datamosh temps réel : un `IsfFileTextureModifier` reçoit deux clips et leurs vidéos de vecteurs, à 60 FPS.
+
+**Variables d'un modifier ISF**
+- `mod.dynamicVariables` donne les entrées ; le nom utile est `d.getFriendlyName()`, soit le `LABEL` du shader avec des majuscules aux mots
+  (`Pulses Per Measure`). `{d.getFriendlyName(): d for d in mod.dynamicVariables}` donne un accès par nom.
+- **Une entrée image est un `OwnedPointer(TextureGenerator)`** : `dv["Clip B"].set(video)` accepte un `VideoFileTextureGenerator` créé par script.
+- **Brancher une vidéo ajoute une variable dynamique `Transport`** (`StandalonePlayableCueTransport`) à la liste. Pour sauvegarder et restaurer des réglages,
+  filtrer par `getOilClassName()`, sinon `float(d.toString())` lève `ValueError`.
+- Classes observées : `float` de 0 à 1 = `Percentage`, `float` à minimum 0 = `PositiveReal`, autre `float` = `Real`, `bool` = `Boolean`, `long` avec `LABELS` =
+  `CustomEnumeration`, `event` = `IsfEvent` (`.trig()`).
+- `Percentage` : `set(0.35)` mais `toString()` renvoie `35.000` (diviser par 100 à la relecture). `CustomEnumeration` : `set("Motion First")` par le texte du menu,
+  `toString()` renvoie ce texte, `.enumerators` liste les `CustomEnumerator` (`label`, `value`).
+- Réinstaller le modifier (`removeAt` + nouvel objet) détruit ses liens : les refaire, quelques frames plus tard, le temps que les variables existent.
+- `TIMEDELTA`, `FRAMEINDEX`, `IMG_SIZE`, passes multiples et `PERSISTENT` fonctionnent. Le moteur tourne plus vite que le clip (60 Hz contre 25 fps) : pour traiter
+  chaque image du clip une seule fois, détecter le changement dans une passe plutôt que compter sur `FRAMEINDEX`.
+
+**Une texture de données doit avoir un gamma de 1**
+- Une vidéo qui contient des données (vecteurs, masques codés) est décodée comme une image : le 128 neutre devient environ 0,22 et le shader voit un déplacement
+  parasite (37 px par image sur une plage de +-64 px), sans aucune erreur. Régler `video.gammaValue.enabled.set(True)` puis `video.gammaValue.value.set(1.0)`.
+- Pour stocker ces données sans perte, `qtrle` (`.mov`, sans perte, un pixel par bloc de 16 px) a fonctionné.
+
+**Avertissements de SMODE sur les vidéos** : il prévient sur une source MP4, sur un HAP dont le nombre de chunks est inférieur à threads / 4 (`-chunks 8` dans ffmpeg pour 32 threads),
+et sur un codec hors de sa liste (HAP, HAP Alpha, Hap Q, HapR, ProRes, NotchLC). `qtrle` déclenche ce dernier avertissement, sans gêne observée.
+
+**Vidéos synchronisées** : `reset.trig()` sur tous les `video.transport` puis `play.trig()` sur tous, dans la même exécution : 4 flux à 0 image d'écart par paire. Un
+`video.transport.player = Oil.createObject("StandalonePlayer")` puis `player.parameters.looping.set(True)` est nécessaire pour une vidéo créée par script.
+
+**États d'une `ParameterBank`** (`ParametersState`, testés sur `Boolean`, `Percentage`, `Real`, `PositiveReal`, `CustomEnumeration`)
+- `state.apply.trig()`, `bank.applyNext.trig()` et `bank.currentStateIndex.set(i)` appliquent un état et pilotent les cibles liées. L'exemple officiel est
+  `packs/Features/Misc/Parameters States.compo`.
+- `bank.saveAsNew.trig()` capture toutes les valeurs de la banque, mais il faut laisser des frames avant de lire le nouvel état dans `bank.states` : 2 frames ont suffi.
+- **Construire les états avant de poser les liens** : la capture ne touche alors pas aux cibles. Poser ensuite un lien n'envoie rien tant que la valeur du `Parameter` ne change pas.
+- **Un lien n'envoie que les changements** : écrire directement dans la cible n'est pas écrasé (constaté sur 1 s, et différent du cas d'une variable de script, voir la section Scripts), mais réappliquer un
+  état dont la valeur égale déjà celle du `Parameter` ne rétablit rien. Écrire aussi dans `p.value`, ou déclencher `p.applyNow.trig()` (testé : la valeur repart vers la cible).
+- **Piège : un `Parameter(CustomEnumeration)` sans choix vide le menu de sa cible.** Le menu du shader reste vide jusqu'à la recréation du modifier. Avant de lier, remplir
+  `p.value.enumerators` avec `c = Oil.createObject("CustomEnumerator")`, `c.label.set(...)`, `c.value.set(...)` (un `CustomEnumerator` n'a pas de `clone`).
+- Une banque survit à la recréation du modifier cible, états compris : il suffit de vider `p.targets` et de refaire les liens.
+- Le déclenchement d'un état depuis une timeline n'a pas été testé.
+
+**Tempo, audio, mesures**
+- `TempoTool` (dans `compo.tools`) : `tempo`, `tap`, `resync`, `positionInMeasure`. Un `Link` (`ParameterLinkSource.target` = `positionInMeasure`) vers une entrée `Percentage` donne au shader
+  sa position dans la mesure.
+- `AudioSpectrumLinkSource` : `extractor.audioChannel`, `extractor.frequencyInterval`, `extractor.amplitudeInterval`, `method`, pour envoyer une bande (kick) vers un paramètre. Câblage vérifié, pas le résultat sur du vrai son.
+- `engine.status.gpuConsumption`, `.cpuConsumption`, `.frame.rate.toString()` (`16.67 ms / 60`) lisent la charge par script. La mesure GPU est bruitée, avec des pics isolés.
+
+**Interface web d'un Script** (complète la section dédiée)
+- Modifier `sourceCode` ou la version redémarre le serveur : une page ouverte rate une requête. Ne pas laisser une erreur réseau affichée à vie : l'effacer après quelques secondes, et recharger la page
+  quand la version renvoyée par l'API change.
+- `ThreadingHTTPServer` et sa file d'attente par défaut : 0 échec à 6 et 20 requêtes en parallèle, 49 refus sur 600 à 60 en parallèle.
+- Un favicon en `data:image/svg+xml` dans le `<head>` s'affiche sans route supplémentaire ; vérifier à 16 px.
+
+**Standard Pack** : `packs/Standard Pack/ISF/Stylize/Glitch/` contient `FastMosh` et `Feedback Mosh` ; `ISF/Color/Masking/Optical Flow Generator` et `ISF/Distort/Distortion/Optical Flow Distort` existent aussi.
 
 ## Audio réactif
 

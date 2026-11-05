@@ -36,6 +36,7 @@
 - [Function cues](#function-cues-automatic-animation-without-the-main-timeline-r15-03112026)
 - [Multiplying particle systems](#multiplying-particle-systems-shared-element-instantiate-point-renderers-r15-03112026)
 - [Particles: text of sand, bank links](#particles-text-of-sand-bank-links-reading-errors-r15-05112026)
+- [Multi-video ISF shaders, bank states, data textures](#multi-video-isf-shaders-bank-states-data-textures-r15-05112026)
 - [Audio reactive](#audio-reactive)
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
@@ -1278,6 +1279,61 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   contact sheet of the viewport at a fixed interval, refusing to capture if Smode is not on top); the Smode window can sit at negative coordinates (-8,-8).
 - A 4-system VJ set (MotionLines + feedback + blur at 1080p, four systems running at opacity 0) ran at about 10 fps on the author's machine (reported, not
   measured by script): check the ms / fps in the status bar before keeping such a set.
+
+## Multi-video ISF shaders, bank states, data textures (R15, 05/11/2026)
+
+Verified while building a real-time datamosh: one `IsfFileTextureModifier` receives two clips and their vector videos, at 60 FPS.
+
+**Variables of an ISF modifier**
+- `mod.dynamicVariables` gives the inputs; the useful name is `d.getFriendlyName()`, the shader's `LABEL` with capitalised words (`Pulses Per Measure`).
+  `{d.getFriendlyName(): d for d in mod.dynamicVariables}` gives access by name.
+- **An image input is an `OwnedPointer(TextureGenerator)`**: `dv["Clip B"].set(video)` accepts a `VideoFileTextureGenerator` created by script.
+- **Plugging a video adds a `Transport` dynamic variable** (`StandalonePlayableCueTransport`) to the list. To save and restore settings, filter on `getOilClassName()`,
+  otherwise `float(d.toString())` raises `ValueError`.
+- Classes observed: `float` from 0 to 1 = `Percentage`, `float` with minimum 0 = `PositiveReal`, other `float` = `Real`, `bool` = `Boolean`, `long` with `LABELS` =
+  `CustomEnumeration`, `event` = `IsfEvent` (`.trig()`).
+- `Percentage`: `set(0.35)` but `toString()` returns `35.000` (divide by 100 when reading). `CustomEnumeration`: `set("Motion First")` by menu text, `toString()` returns that text,
+  `.enumerators` lists the `CustomEnumerator` objects (`label`, `value`).
+- Reinstalling the modifier (`removeAt` + new object) destroys its links: rebuild them a few frames later, once the variables exist.
+- `TIMEDELTA`, `FRAMEINDEX`, `IMG_SIZE`, multiple passes and `PERSISTENT` work. The engine runs faster than the clip (60 Hz against 25 fps): to process each clip frame once,
+  detect the change in a pass rather than rely on `FRAMEINDEX`.
+
+**A data texture must have a gamma of 1**
+- A video holding data (vectors, coded masks) is decoded as a picture: neutral 128 becomes about 0.22 and the shader sees a parasitic shift (37 px per frame on a +-64 px range),
+  with no error. Set `video.gammaValue.enabled.set(True)` then `video.gammaValue.value.set(1.0)`.
+- To store this data losslessly, `qtrle` (`.mov`, lossless, one pixel per 16 px block) worked.
+
+**SMODE video warnings**: it warns on an MP4 source, on HAP with fewer chunks than threads / 4 (`-chunks 8` in ffmpeg for 32 threads), and on a codec outside its list (HAP, HAP Alpha,
+Hap Q, HapR, ProRes, NotchLC). `qtrle` triggers this last warning, with no problem observed.
+
+**Synchronised videos**: `reset.trig()` on every `video.transport` then `play.trig()` on every one, in the same execution: 4 streams with 0 frame of gap on each pair. A video created by script
+needs `video.transport.player = Oil.createObject("StandalonePlayer")` then `player.parameters.looping.set(True)`.
+
+**`ParameterBank` states** (`ParametersState`, tested on `Boolean`, `Percentage`, `Real`, `PositiveReal`, `CustomEnumeration`)
+- `state.apply.trig()`, `bank.applyNext.trig()` and `bank.currentStateIndex.set(i)` apply a state and drive the linked targets. The official sample is
+  `packs/Features/Misc/Parameters States.compo`.
+- `bank.saveAsNew.trig()` captures every value of the bank, but leave frames before reading the new state in `bank.states`: 2 frames were enough.
+- **Build the states before adding the links**: the capture then leaves the targets alone. Adding a link afterwards sends nothing until the `Parameter` value changes.
+- **A link only sends changes**: writing directly to the target is not overwritten (seen over 1 s, and different from the script variable case, see the Scripts section), but re-applying a state whose value already
+  equals the `Parameter` restores nothing. Also write to `p.value`, or fire `p.applyNow.trig()` (tested: the value goes back to the target).
+- **Trap: a `Parameter(CustomEnumeration)` with no choices empties its target's menu.** The shader's menu stays empty until the modifier is recreated. Before linking, fill
+  `p.value.enumerators` with `c = Oil.createObject("CustomEnumerator")`, `c.label.set(...)`, `c.value.set(...)` (a `CustomEnumerator` has no `clone`).
+- A bank survives the recreation of the target modifier, states included: clear `p.targets` and rebuild the links.
+- Firing a state from a timeline was not tested.
+
+**Tempo, audio, measurements**
+- `TempoTool` (in `compo.tools`): `tempo`, `tap`, `resync`, `positionInMeasure`. A `Link` (`ParameterLinkSource.target` = `positionInMeasure`) to a `Percentage` input gives the shader
+  its position in the measure.
+- `AudioSpectrumLinkSource`: `extractor.audioChannel`, `extractor.frequencyInterval`, `extractor.amplitudeInterval`, `method`, to send a band (kick) to a parameter. Wiring verified, not the result on real sound.
+- `engine.status.gpuConsumption`, `.cpuConsumption`, `.frame.rate.toString()` (`16.67 ms / 60`) read the load by script. The GPU reading is noisy, with isolated spikes.
+
+**Web interface of a Script** (adds to the dedicated section)
+- Changing `sourceCode` or the version restarts the server: an open page misses a request. Do not leave a network error on screen forever: clear it after a few seconds, and reload the page
+  when the version returned by the API changes.
+- `ThreadingHTTPServer` with its default queue: 0 failures at 6 and 20 parallel requests, 49 refused out of 600 at 60 in parallel.
+- A `data:image/svg+xml` favicon in the `<head>` works with no extra route; check it at 16 px.
+
+**Standard Pack**: `packs/Standard Pack/ISF/Stylize/Glitch/` holds `FastMosh` and `Feedback Mosh`; `ISF/Color/Masking/Optical Flow Generator` and `ISF/Distort/Distortion/Optical Flow Distort` also exist.
 
 ## Audio reactive
 
