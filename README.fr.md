@@ -35,6 +35,7 @@
 - [Multiplier un système de particules](#multiplier-un-système-de-particules--élément-partagé-instantiate-rendus-en-points-r15-03112026)
 - [Particules : texte en sable, liens de banque](#particules--texte-en-sable-liens-de-banque-lire-les-erreurs-r15-05112026)
 - [Shaders ISF à plusieurs vidéos, états de banque, données en texture](#shaders-isf-à-plusieurs-vidéos-états-de-banque-données-en-texture-r15-05112026)
+- [Un Script « plugin » : globals partagés, document, vidéos partagées](#un-script--plugin---globals-partagés-document-vidéos-partagées-r15-12112026)
 - [Audio réactif](#audio-réactif)
 - [Scripts créés par programmation (PythonScriptTool)](#scripts-créés-par-programmation-pythonscripttool)
 - [Fichiers 3D importés, textures image et compos de matériau](#fichiers-3d-importés-textures-image-et-compos-de-matériau-r15-08102026)
@@ -1121,6 +1122,59 @@ et sur un codec hors de sa liste (HAP, HAP Alpha, Hap Q, HapR, ProRes, NotchLC).
   (« Pulses per Measure » devient « Pulses Per Measure », « (s) » reste tel quel).
 
 **Standard Pack** : `packs/Standard Pack/ISF/Stylize/Glitch/` contient `FastMosh` et `Feedback Mosh` ; `ISF/Color/Masking/Optical Flow Generator` et `ISF/Distort/Distortion/Optical Flow Distort` existent aussi.
+
+## Un Script « plugin » : globals partagés, document, vidéos partagées (R15, 12/11/2026)
+
+Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quelle compo (datamosh temps réel).
+
+**Scripts et documents**
+- **Tous les Scripts partagent les mêmes globals Python, même d'un document à l'autre** (vérifié : une variable posée par un Script est lue par un
+  autre). Deux exemplaires du même Script, ou deux versions, s'écrasent leurs fonctions et leur état. Parade : exécuter le code dans un
+  dictionnaire à part par version (`exec(compile(code, ...), espace)`, en y passant `Oil` et `engine`) et garder un état par outil.
+- Les wrappers Oil sont stables : `script` est le même objet Python d'une image à l'autre, donc `id(tool)` et `is` identifient un Script.
+  `tool.getUniqueIdentifier()` sur un `PythonScriptTool` lève `TypeError` (`juce::Uuid` non convertible).
+- **SMODE n'exécute que les Scripts du document au premier plan** : un pont resté dans une compo en arrière-plan ne répond plus (504).
+- Un Script glissé dans les outils démarre en `launchMode` `manual`. Après `sourceCode.set`, ses `dynamicVariables` ne sont remplies qu'au retour
+  de l'appel (un `KeyError` sur leur nom dans le même appel).
+- **Chemin du document** : remonter depuis le Script (`tool.parentElement`, puis `.parent` pour une Compo ou un pointeur) jusqu'à l'objet de classe
+  `Document(TextureGenerator)`. `doc.nativeFile.toString()` donne le chemin absolu (`...\test datamosh2\test datamosh2.compo`), une chaîne vide tant
+  qu'il n'a jamais été enregistré ; `doc.hasUnsavedChanges` ; son parent est le vecteur `Unsaved Documents` ou `Files`.
+- **Un objet supprimé ou d'un document fermé** : y accéder lève parfois `RuntimeError('Access violation - no RTTI data!')`, mais relire à chaque
+  image un `Parameter` qu'on vient de retirer de sa banque a fait planter SMODE (pas d'exception Python). Ne jamais garder en cache un objet Oil
+  sans vérifier qu'il existe encore (ici : relire la banque dès que son nombre de paramètres change).
+- Les sauvegardes automatiques `<doc>.versions\<doc>.compo.AutoSave<date>` sont des compos complètes : copiées en `.compo` à côté de l'original,
+  elles se rouvrent. Les états d'une banque y sont lisibles (`values` : clé = uuid du `Parameter`, valeur typée `'Real @... 2.`).
+
+**Vidéos partagées par script**
+- Élément partagé : `se = Oil.createObject("SharedElement(TextureGenerator)")`, `se.content = video`, puis `souscompo.tools.append(se)`.
+  Son nom affiché est celui du fichier. Référence : `Oil.createObject("ReferenceTextureGenerator")`, `referencer.address.location.set(0)`
+  (`internalIndirect`), `referencer.address.elementPointer.set(se.getVariableByName("content"))`, `referencer.shared.set(True)`.
+- La vidéo derrière une référence : `ref.referencer.address.target.get()`. Rebrancher une référence sur un autre élément : refaire
+  `elementPointer.set(...)`. `ref.clone()` donne une copie dont la cible est vide tant qu'elle n'est pas rebranchée.
+- **Une vidéo partagée que rien ne référence ne joue pas** (sa position reste à 0, aucune charge mesurée) : une bibliothèque de clips partagés ne
+  coûte que les clips branchés. Deux références au même élément partagent un seul décodage et un seul transport.
+- Une entrée image d'un modifier ISF accepte une référence ; le code qui lisait `entrée.file` ou `entrée.transport` doit passer par `target`.
+
+**Lecteur vidéo et générateurs**
+- `video.transport.player.parameters` : `in` et `out` (optionnels : `.enabled`, `.value`), `looping`, `speed`, `playMode`, `targetLength` ;
+  `in` est un mot réservé Python : `getattr(params, "in")`. **Changer `file.path` garde le point `out` de l'ancien clip** : un clip plus court reste
+  figé sur sa dernière image au lieu de boucler. Remettre `out.enabled` à False au chargement. Les temps s'affichent `h:mm:ss:images`.
+- `UniformTextureGenerator` : générateur uni, presque gratuit, pour un calque dont l'image vient d'un modifier. Taille :
+  `resolution.preset.set(40)` (Custom) puis `resolution.width.set(w)` / `height.set(h)`. Dans le shader, la taille de sortie se lit sur un tampon
+  persistant (`IMG_SIZE(monTampon)`), l'image du calque n'étant plus la source.
+- Avertissement d'une vidéo qtrle : « The codecs that are supported officially by smode are: HAP, HAP Alpha, Hap Q, HapR, ProRes, NotchLC and
+  NotchLC Alpha. » (`liveStatus.success`), sans effet sur la lecture.
+
+**Banques de paramètres (compléments)**
+- Ajouter un `Parameter` à une banque existante est sans effet sur ses états : un état enregistré avant ne touche pas ce paramètre.
+- Un `Parameter(CustomEnumeration)` **non lié** sert de sélecteur (liste de clips par exemple) : un Script remplit ses choix au chargement (ils ne
+  sont pas enregistrés) et réagit au changement de sa valeur ; un état enregistré avec lui rappelle le choix.
+
+**Outils de test sans toucher à l'utilisateur**
+- Capture de la fenêtre SMODE en arrière-plan par `PrintWindow(hwnd, hdc, 2)` (voir « Vérifier visuellement ») : les rafales de captures avec
+  la position du tempo ont permis de prouver qu'un gel s'enclenchait (images strictement identiques avec la vitesse à 0).
+- Interface web : Edge headless avec `--remote-debugging-port` et `websocket-client` (`Runtime.evaluate`, `Input.dispatchMouseEvent`,
+  `Page.captureScreenshot`, et `Runtime.exceptionThrown` pour attraper les erreurs JavaScript de la page).
 
 ## Audio réactif
 

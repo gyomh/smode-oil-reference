@@ -37,6 +37,7 @@
 - [Multiplying particle systems](#multiplying-particle-systems-shared-element-instantiate-point-renderers-r15-03112026)
 - [Particles: text of sand, bank links](#particles-text-of-sand-bank-links-reading-errors-r15-05112026)
 - [Multi-video ISF shaders, bank states, data textures](#multi-video-isf-shaders-bank-states-data-textures-r15-05112026)
+- [A "plugin" Script: shared globals, document, shared videos](#a-plugin-script-shared-globals-document-shared-videos-r15-12112026)
 - [Audio reactive](#audio-reactive)
 - [Scripts created programmatically (PythonScriptTool)](#scripts-created-programmatically-pythonscripttool)
 - [Imported 3D files, image textures and material compos](#imported-3d-files-image-textures-and-material-compos-r15-08102026)
@@ -1347,6 +1348,59 @@ needs `video.transport.player = Oil.createObject("StandalonePlayer")` then `play
   ("Pulses per Measure" becomes "Pulses Per Measure", "(s)" stays as it is).
 
 **Standard Pack**: `packs/Standard Pack/ISF/Stylize/Glitch/` holds `FastMosh` and `Feedback Mosh`; `ISF/Color/Masking/Optical Flow Generator` and `ISF/Distort/Distortion/Optical Flow Distort` also exist.
+
+## A "plugin" Script: shared globals, document, shared videos (R15, 12/11/2026)
+
+Verified while turning a Script into a plugin dragged alone into any compo (real-time datamosh).
+
+**Scripts and documents**
+- **All Scripts share the same Python globals, even across documents** (verified: a variable set by one Script is read by another). Two copies
+  of the same Script, or two versions, overwrite each other's functions and state. Remedy: run the code in a dictionary of its own per version
+  (`exec(compile(code, ...), space)`, passing `Oil` and `engine` in) and keep one state per tool.
+- Oil wrappers are stable: `script` is the same Python object from frame to frame, so `id(tool)` and `is` identify a Script.
+  `tool.getUniqueIdentifier()` on a `PythonScriptTool` raises `TypeError` (`juce::Uuid` cannot be converted).
+- **SMODE only runs the Scripts of the document in front**: a bridge left in a compo in the background stops answering (504).
+- A Script dragged into the tools starts with `launchMode` `manual`. After `sourceCode.set`, its `dynamicVariables` are filled only once the call
+  has returned (a `KeyError` on their names in the same call).
+- **Path of the document**: walk up from the Script (`tool.parentElement`, then `.parent` for a Compo or a pointer) to the object of class
+  `Document(TextureGenerator)`. `doc.nativeFile.toString()` gives the absolute path (`...\test datamosh2\test datamosh2.compo`), an empty string
+  while it has never been saved; `doc.hasUnsavedChanges`; its parent is the `Unsaved Documents` or `Files` vector.
+- **A deleted object, or one from a closed document**: touching it sometimes raises `RuntimeError('Access violation - no RTTI data!')`, but reading
+  on every frame a `Parameter` just removed from its bank crashed SMODE (no Python exception). Never keep an Oil object cached without checking
+  it still exists (here: read the bank again as soon as its parameter count changes).
+- Autosaves `<doc>.versions\<doc>.compo.AutoSave<date>` are complete compos: copied as a `.compo` next to the original, they open again. A bank's
+  states can be read in them (`values`: key = uuid of the `Parameter`, typed value `'Real @... 2.`).
+
+**Shared videos by script**
+- Shared element: `se = Oil.createObject("SharedElement(TextureGenerator)")`, `se.content = video`, then `subcompo.tools.append(se)`. Its displayed
+  name is the file's. Reference: `Oil.createObject("ReferenceTextureGenerator")`, `referencer.address.location.set(0)` (`internalIndirect`),
+  `referencer.address.elementPointer.set(se.getVariableByName("content"))`, `referencer.shared.set(True)`.
+- The video behind a reference: `ref.referencer.address.target.get()`. Point a reference at another element: `elementPointer.set(...)` again.
+  `ref.clone()` gives a copy whose target is empty until it is pointed again.
+- **A shared video that nothing references does not play** (its position stays at 0, no load measured): a library of shared clips only costs the
+  clips in use. Two references to the same element share one decode and one transport.
+- An image input of an ISF modifier accepts a reference; code that read `input.file` or `input.transport` must go through `target`.
+
+**Video player and generators**
+- `video.transport.player.parameters`: `in` and `out` (optional: `.enabled`, `.value`), `looping`, `speed`, `playMode`, `targetLength`;
+  `in` is a Python keyword: `getattr(params, "in")`. **Changing `file.path` keeps the previous clip's `out` point**: a shorter clip holds its last
+  image instead of looping. Set `out.enabled` to False on load. Times read `h:mm:ss:frames`.
+- `UniformTextureGenerator`: plain colour generator, almost free, for a layer whose picture comes from a modifier. Size:
+  `resolution.preset.set(40)` (Custom) then `resolution.width.set(w)` / `height.set(h)`. In the shader, read the output size from a persistent
+  buffer (`IMG_SIZE(myBuffer)`), the layer's own image no longer being the source.
+- Warning on a qtrle video: "The codecs that are supported officially by smode are: HAP, HAP Alpha, Hap Q, HapR, ProRes, NotchLC and NotchLC
+  Alpha." (`liveStatus.success`), with no effect on playback.
+
+**Parameter banks (additions)**
+- Adding a `Parameter` to an existing bank leaves its states alone: a state saved before does not touch that parameter.
+- An **unlinked** `Parameter(CustomEnumeration)` works as a selector (a list of clips for instance): a Script fills its choices on load (they are
+  not saved) and reacts when its value changes; a state saved with it recalls the choice.
+
+**Testing without disturbing the user**
+- Background capture of the SMODE window with `PrintWindow(hwnd, hdc, 2)` (see "Checking visually"): bursts of captures with the tempo position
+  proved that a freeze engaged (strictly identical images with the speed at 0).
+- Web interface: headless Edge with `--remote-debugging-port` and `websocket-client` (`Runtime.evaluate`, `Input.dispatchMouseEvent`,
+  `Page.captureScreenshot`, and `Runtime.exceptionThrown` to catch the page's JavaScript errors).
 
 ## Audio reactive
 
