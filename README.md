@@ -685,6 +685,8 @@ Beware: if the Smode window sits on another screen with other windows over it, t
 include them. `Process.MainWindowHandle` of Smode can be a 1x1 window: enumerate the process's visible top-level
 windows (`EnumWindows` + `GetWindowThreadProcessId`) and take the largest one. To check an animation, grab a few crops
 of the viewport ~0.1 s apart while the timeline plays and lay them out in one contact sheet.
+**Without taking the focus (R15, 12/11/2026)**: `PrintWindow(hwnd, hdc, 2)` (`PW_RENDERFULLCONTENT`) from PowerShell captures the Smode window even behind
+other windows, rendering included (verified on a 1920 x 1080 output window), about 250 ms per full-frame capture.
 
 ## Nested Scene (nested Scene layer)
 
@@ -1316,14 +1318,20 @@ needs `video.transport.player = Oil.createObject("StandalonePlayer")` then `play
 - **Build the states before adding the links**: the capture then leaves the targets alone. Adding a link afterwards sends nothing until the `Parameter` value changes.
 - **A link only sends changes**: writing directly to the target is not overwritten (seen over 1 s, and different from the script variable case, see the Scripts section), but re-applying a state whose value already
   equals the `Parameter` restores nothing. Also write to `p.value`, or fire `p.applyNow.trig()` (tested: the value goes back to the target).
-- **Trap: a `Parameter(CustomEnumeration)` with no choices empties its target's menu.** The shader's menu stays empty until the modifier is recreated. Before linking, fill
-  `p.value.enumerators` with `c = Oil.createObject("CustomEnumerator")`, `c.label.set(...)`, `c.value.set(...)` (a `CustomEnumerator` has no `clone`).
+- **Trap: never link a `Parameter` to a shader menu (`CustomEnumeration`) (corrected 12/11/2026).** A `Parameter(CustomEnumeration)` with no choices empties its
+  target's menu. Filling `p.value.enumerators` (`c = Oil.createObject("CustomEnumerator")`, `c.label.set(...)`, `c.value.set(...)`, no `clone`) does not hold:
+  **SMODE does not save these choices in the compo, only the text value.** On reopening, the bank has an empty menu and its link empties the shader's.
+  A linked `Parameter(Integer)` or `(Real)` also empties the menu on its first value change. Once the menu is empty, the input still shows its text
+  (`toString()` returns "Tempo") but the shader receives 0, with no error at all. Only recreating the modifier brings the menu back. Validated workaround: an
+  unlinked `Parameter(Integer)` whose position a Script copies into the menu by its text (`d.set("Tempo")`), reading the bank only once a second.
 - A bank survives the recreation of the target modifier, states included: clear `p.targets` and rebuild the links.
 - Firing a state from a timeline was not tested.
 
 **Tempo, audio, measurements**
 - `TempoTool` (in `compo.tools`): `tempo`, `tap`, `resync`, `positionInMeasure`. A `Link` (`ParameterLinkSource.target` = `positionInMeasure`) to a `Percentage` input gives the shader
   its position in the measure.
+- Other `TempoTool` properties: `beatsPerMeasure` (length of the measure, hence of `positionInMeasure`), `speedMultiplier`, `beatDuration` (ms), `positionInBeat`,
+  `beatCount`, `tapCount`, `timeValue`. `positionInMeasure.toString()` returns a percentage (`34.667`).
 - `AudioSpectrumLinkSource`: `extractor.audioChannel`, `extractor.frequencyInterval`, `extractor.amplitudeInterval`, `method`, to send a band (kick) to a parameter. Wiring verified, not the result on real sound.
 - `engine.status.gpuConsumption`, `.cpuConsumption`, `.frame.rate.toString()` (`16.67 ms / 60`) read the load by script. The GPU reading is noisy, with isolated spikes.
 
@@ -1332,6 +1340,11 @@ needs `video.transport.player = Oil.createObject("StandalonePlayer")` then `play
   when the version returned by the API changes.
 - `ThreadingHTTPServer` with its default queue: 0 failures at 6 and 20 parallel requests, 49 refused out of 600 at 60 in parallel.
 - A `data:image/svg+xml` favicon in the `<head>` works with no extra route; check it at 16 px.
+- **Sliders**: a drag sends about 60 values a second, and a round trip to the Script takes about 90 ms. Sending them all left SMODE 0.33 s behind the hand.
+  One request in flight per parameter, with the latest value waiting behind it, brings this down to 0.08-0.20 s. Sending every 50 ms without waiting for the
+  answer was worse (up to 0.44 s). Update the field's display locally, not at the next poll.
+- Defaults of an ISF shader for an interface: read the JSON header (`/* ... */`). The name SMODE shows is the `LABEL` with each word capitalised
+  ("Pulses per Measure" becomes "Pulses Per Measure", "(s)" stays as it is).
 
 **Standard Pack**: `packs/Standard Pack/ISF/Stylize/Glitch/` holds `FastMosh` and `Feedback Mosh`; `ISF/Color/Masking/Optical Flow Generator` and `ISF/Distort/Distortion/Optical Flow Distort` also exist.
 

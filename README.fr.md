@@ -525,6 +525,8 @@ Smode + `Graphics.CopyFromScreen` sur ce rectangle seul (jamais l'écran entier)
 Recadrer sur le viewport pour lire une icône ; la barre d'état en bas de la fenêtre donne les erreurs
 de rendu (« No direct pointer », « Unspecified reference », « No Triangles... »).
 Attention : si la fenêtre Smode est sur un autre écran avec d'autres fenêtres par-dessus, la capture les inclura.
+**Sans prendre le focus (R15, 12/11/2026)** : `PrintWindow(hwnd, hdc, 2)` (`PW_RENDERFULLCONTENT`) depuis PowerShell capture la fenêtre Smode même cachée
+derrière d'autres fenêtres, rendu compris (vérifié sur une fenêtre de sortie 1920 x 1080), environ 250 ms par capture plein cadre.
 
 ## Scene imbriquée (nested Scene layer)
 
@@ -1090,14 +1092,20 @@ et sur un codec hors de sa liste (HAP, HAP Alpha, Hap Q, HapR, ProRes, NotchLC).
 - **Construire les états avant de poser les liens** : la capture ne touche alors pas aux cibles. Poser ensuite un lien n'envoie rien tant que la valeur du `Parameter` ne change pas.
 - **Un lien n'envoie que les changements** : écrire directement dans la cible n'est pas écrasé (constaté sur 1 s, et différent du cas d'une variable de script, voir la section Scripts), mais réappliquer un
   état dont la valeur égale déjà celle du `Parameter` ne rétablit rien. Écrire aussi dans `p.value`, ou déclencher `p.applyNow.trig()` (testé : la valeur repart vers la cible).
-- **Piège : un `Parameter(CustomEnumeration)` sans choix vide le menu de sa cible.** Le menu du shader reste vide jusqu'à la recréation du modifier. Avant de lier, remplir
-  `p.value.enumerators` avec `c = Oil.createObject("CustomEnumerator")`, `c.label.set(...)`, `c.value.set(...)` (un `CustomEnumerator` n'a pas de `clone`).
+- **Piège : ne jamais lier un `Parameter` à un menu (`CustomEnumeration`) d'un shader (corrigé le 12/11/2026).** Un `Parameter(CustomEnumeration)` sans choix vide le
+  menu de sa cible. Remplir `p.value.enumerators` (`c = Oil.createObject("CustomEnumerator")`, `c.label.set(...)`, `c.value.set(...)`, pas de `clone`) ne tient pas :
+  **SMODE n'enregistre pas ces choix dans la compo, seulement la valeur texte.** À la réouverture, la banque a un menu vide et son lien vide celui du shader.
+  Un `Parameter(Integer)` ou `(Real)` lié vide aussi le menu dès le premier changement de valeur. Une fois le menu vide, l'entrée affiche toujours son texte
+  (`toString()` renvoie « Tempo ») mais le shader reçoit 0, sans aucune erreur. Seule la recréation du modifier rend le menu. Contournement validé : un
+  `Parameter(Integer)` non lié, dont un Script recopie la position dans le menu par son texte (`d.set("Tempo")`), en ne relisant la banque qu'une fois par seconde.
 - Une banque survit à la recréation du modifier cible, états compris : il suffit de vider `p.targets` et de refaire les liens.
 - Le déclenchement d'un état depuis une timeline n'a pas été testé.
 
 **Tempo, audio, mesures**
 - `TempoTool` (dans `compo.tools`) : `tempo`, `tap`, `resync`, `positionInMeasure`. Un `Link` (`ParameterLinkSource.target` = `positionInMeasure`) vers une entrée `Percentage` donne au shader
   sa position dans la mesure.
+- Autres propriétés du `TempoTool` : `beatsPerMeasure` (longueur de la mesure, donc de `positionInMeasure`), `speedMultiplier`, `beatDuration` (ms), `positionInBeat`,
+  `beatCount`, `tapCount`, `timeValue`. `positionInMeasure.toString()` renvoie un pourcentage (`34.667`).
 - `AudioSpectrumLinkSource` : `extractor.audioChannel`, `extractor.frequencyInterval`, `extractor.amplitudeInterval`, `method`, pour envoyer une bande (kick) vers un paramètre. Câblage vérifié, pas le résultat sur du vrai son.
 - `engine.status.gpuConsumption`, `.cpuConsumption`, `.frame.rate.toString()` (`16.67 ms / 60`) lisent la charge par script. La mesure GPU est bruitée, avec des pics isolés.
 
@@ -1106,6 +1114,11 @@ et sur un codec hors de sa liste (HAP, HAP Alpha, Hap Q, HapR, ProRes, NotchLC).
   quand la version renvoyée par l'API change.
 - `ThreadingHTTPServer` et sa file d'attente par défaut : 0 échec à 6 et 20 requêtes en parallèle, 49 refus sur 600 à 60 en parallèle.
 - Un favicon en `data:image/svg+xml` dans le `<head>` s'affiche sans route supplémentaire ; vérifier à 16 px.
+- **Curseurs** : un glissement envoie environ 60 valeurs par seconde, et un aller-retour vers le Script prend environ 90 ms. Tout envoyer met SMODE 0,33 s en retard
+  sur la main. Une seule requête en vol par paramètre, avec la dernière valeur en attente derrière, ramène ce retard à 0,08-0,20 s. Envoyer toutes les 50 ms sans
+  attendre la réponse a été pire (jusqu'à 0,44 s). Mettre à jour l'affichage du champ localement, pas au sondage suivant.
+- Valeurs par défaut d'un shader ISF pour une interface : lire l'en-tête JSON (`/* ... */`). Le nom affiché par SMODE est le `LABEL` avec une majuscule à chaque mot
+  (« Pulses per Measure » devient « Pulses Per Measure », « (s) » reste tel quel).
 
 **Standard Pack** : `packs/Standard Pack/ISF/Stylize/Glitch/` contient `FastMosh` et `Feedback Mosh` ; `ISF/Color/Masking/Optical Flow Generator` et `ISF/Distort/Distortion/Optical Flow Distort` existent aussi.
 
