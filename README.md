@@ -1327,6 +1327,11 @@ needs `video.transport.player = Oil.createObject("StandalonePlayer")` then `play
   unlinked `Parameter(Integer)` whose position a Script copies into the menu by its text (`d.set("Tempo")`), reading the bank only once a second.
 - A bank survives the recreation of the target modifier, states included: clear `p.targets` and rebuild the links.
 - Firing a state from a timeline was not tested.
+- **Menus recalled by a state without linking them**: unlinked `Parameter(Integer)` holding the menu position (Image Clip, Motion Clip...)
+  and unlinked `Parameter(CustomEnumeration)` selectors (clip, vectors) that a Script applies when they change. When two selectors depend
+  on each other (loading a clip writes its own vectors into the vectors selector), read every selector value first, then apply: otherwise
+  the state's own value is overwritten before it is read. Write back into the bank whatever the user changes elsewhere (window, cut
+  shortcut), or re-applying a state holding the old position does nothing.
 
 **Tempo, audio, measurements**
 - `TempoTool` (in `compo.tools`): `tempo`, `tap`, `resync`, `positionInMeasure`. A `Link` (`ParameterLinkSource.target` = `positionInMeasure`) to a `Percentage` input gives the shader
@@ -1362,6 +1367,9 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
 - **SMODE only runs the Scripts of the document in front**: a bridge left in a compo in the background stops answering (504).
 - A Script dragged into the tools starts with `launchMode` `manual`. After `sourceCode.set`, its `dynamicVariables` are filled only once the call
   has returned (a `KeyError` on their names in the same call).
+- **A Script's code is stored in the compo**, not read from the `.py`: update it by dragging the file again or with
+  `tool.script.sourceCode.set(text)` (the running Script restarts on the new code). Until the document is saved, the update
+  only lives in memory: after a crash, the reopened compo has the old code.
 - **Path of the document**: walk up from the Script (`tool.parentElement`, then `.parent` for a Compo or a pointer) to the object of class
   `Document(TextureGenerator)`. `doc.nativeFile.toString()` gives the absolute path (`...\test datamosh2\test datamosh2.compo`), an empty string
   while it has never been saved; `doc.hasUnsavedChanges`; its parent is the `Unsaved Documents` or `Files` vector.
@@ -1380,6 +1388,30 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
 - **A shared video that nothing references does not play** (its position stays at 0, no load measured): a library of shared clips only costs the
   clips in use. Two references to the same element share one decode and one transport.
 - An image input of an ISF modifier accepts a reference; code that read `input.file` or `input.transport` must go through `target`.
+- `ref.referencer.address.target.get()` returns the same Python object as `sharedElement.content` (`is` works): it tells which
+  library element a reference shows, whatever its class (video, `Compo`, `VideoInputTextureGenerator`).
+- **An image input with no picture blacks out the whole ISF modifier (R15, 13/11/2026).** A `VideoInputTextureGenerator` without
+  signal (`sourceResolution` `0x0`: capture card unplugged, NDI source unreachable), or an empty video, plugged into ANY image input,
+  even one the shader never samples: the output is entirely black, debug views included (a constant `vec4(..., 0.5, 1)` came out
+  black), with `liveStatus` success. Neither an event nor recreating the modifier helps while that input stays empty. Check: give the
+  layer's `UniformTextureGenerator` a red colour; red with the modifier on means it is skipped, black means it runs and outputs black
+  (the case here). Fix: never plug a source that can lose its picture straight in; check `sourceResolution` of every input's target.
+- **A `Compo` created by script and plugged straight into an ISF image input (`OwnedPointer`) drew nothing** (black, while the same
+  compo structure worked elsewhere). Through a `SharedElement(TextureGenerator)` holding the compo and a `ReferenceTextureGenerator`,
+  it plays. A compo always has a picture (transparent without content): wrapping a video input in a shared compo keeps the shader
+  alive when the signal drops.
+- An element dropped by hand into a library compo is a `SharedElement(TextureGenerator)` whose `content` can be any texture generator
+  (`Compo`, `VideoInputTextureGenerator`...). An unnamed `Compo` shows as `Compo Compo` (`getFriendlyName()`), its label is empty.
+
+**Video inputs (R15, 12-13/11/2026)**
+- `VideoInputTextureGenerator`: `device` (`VideoInputDeviceSelector`: `deviceName`, a `String` such as `Video Input 1`; `address`,
+  `factory`), `sourceResolution` (`PixelSize`, `0x0` without signal), `keepLastImage`, `resolution`, `extractor` (`Parametric2dPlacement`).
+  Choosing the device by script: `gen.device.deviceName.set("Video Input %d" % channel)`.
+- Devices: `engine.devices.devices`, classes `DirectShowVideoInputDevice` (capture card, webcam) and `NdiVideoInputDevice` (NDI source,
+  `status` "error: The NDI Source ... is not reachable" when the sender stops). Each has `ioChannel` (the N of `Video Input N`),
+  `identifier`, `size` (`1280x720`), `status`, `initialized`. A capture card plugged again can come back under another name
+  (`MiraBox Video Capture 6` then `7`).
+- A video input saved with the NDI factory reads `device = {factory = "Remote Video Input"}` in the `.compo`.
 
 **Video player and generators**
 - `video.transport.player.parameters`: `in` and `out` (optional: `.enabled`, `.value`), `looping`, `speed`, `playMode`, `targetLength`;
@@ -1401,6 +1433,17 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   proved that a freeze engaged (strictly identical images with the speed at 0).
 - Web interface: headless Edge with `--remote-debugging-port` and `websocket-client` (`Runtime.evaluate`, `Input.dispatchMouseEvent`,
   `Page.captureScreenshot`, and `Runtime.exceptionThrown` to catch the page's JavaScript errors).
+- `EnumWindows` + `PrintWindow(hwnd, dc, 2)` on every visible window of the Smode process captures the editor (viewport) and the output
+  window together, in the background. `msedge --headless=new --dump-dom --virtual-time-budget=3000 <url>` gives the page after its
+  scripts ran (filled menus), without CDP.
+- The user may be playing live while a test runs: read the state just before restoring it, and do not put back values the user changed.
+
+**Script cost (R15, 13/11/2026)**
+- Reading `{d.getFriendlyName(): d for d in mod.dynamicVariables}` costs about 0.3 ms (about 35 variables); scanning 15 shared elements
+  of a library (`tool.content`, `file.path.get()`) 0.5 ms. A web window that asks for its state 8 times a second, each request
+  repeating these lookups, cost 5.7 ms per request (Script average 1.2-1.5 ms per frame). Remedy: memo per frame, dropped at the end of
+  every frame and right after any structural change (modifier recreated, element added), so that no Oil object is kept from one frame to
+  the next; and refresh the slow part of the state twice a second or after a command: back to 0.4-0.6 ms.
 
 ## Audio reactive
 
@@ -2102,6 +2145,13 @@ Rule (to confirm): for a 3D rebuild, reset the lights' targets and make another 
 clear in a second call, rebuild in a third; or update the existing objects instead of rebuilding.
 Note: changes made by script do not mark the document as modified (no `*`, `hasUnsavedChanges` False), so a Ctrl+S
 saves them without warning.
+
+An eighth crash (R15, 13/11/2026), through the MCP bridge:
+8. `dv["Video Input"].set(Oil.createObject("VideoFileTextureGenerator"))` on an ISF image input that held a
+   `VideoInputTextureGenerator` bound to an unreachable NDI source. The same call had worked once a few minutes earlier;
+   the second time (after the modifier had been recreated) Smode stopped answering, then closed. 14 minutes of work lost
+   (last save). Rule: do not swap the object of an image input of a live shader by script to test something; change
+   values, or go through the planned reinstall.
 
 After a crash, Smode may **reopen an old save**: the automatic saves are in
 `Documents\Smode Files\<project>.project\.versions` (every 5 min); a text search in the file

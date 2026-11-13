@@ -1101,6 +1101,11 @@ et sur un codec hors de sa liste (HAP, HAP Alpha, Hap Q, HapR, ProRes, NotchLC).
   `Parameter(Integer)` non lié, dont un Script recopie la position dans le menu par son texte (`d.set("Tempo")`), en ne relisant la banque qu'une fois par seconde.
 - Une banque survit à la recréation du modifier cible, états compris : il suffit de vider `p.targets` et de refaire les liens.
 - Le déclenchement d'un état depuis une timeline n'a pas été testé.
+- **Menus rappelés par un état sans les lier** : `Parameter(Integer)` non liés qui gardent la position du menu (Image Clip, Motion Clip...)
+  et sélecteurs `Parameter(CustomEnumeration)` non liés (clip, vecteurs) qu'un Script applique quand ils changent. Quand deux sélecteurs
+  dépendent l'un de l'autre (charger un clip écrit ses propres vecteurs dans le sélecteur de vecteurs), lire d'abord toutes les valeurs,
+  puis appliquer : sinon la valeur de l'état est écrasée avant d'être lue. Réécrire dans la banque ce que l'utilisateur change ailleurs
+  (fenêtre, raccourci de coupe), sinon réappliquer un état qui contient l'ancienne position ne fait rien.
 
 **Tempo, audio, mesures**
 - `TempoTool` (dans `compo.tools`) : `tempo`, `tap`, `resync`, `positionInMeasure`. Un `Link` (`ParameterLinkSource.target` = `positionInMeasure`) vers une entrée `Percentage` donne au shader
@@ -1136,6 +1141,9 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
 - **SMODE n'exécute que les Scripts du document au premier plan** : un pont resté dans une compo en arrière-plan ne répond plus (504).
 - Un Script glissé dans les outils démarre en `launchMode` `manual`. Après `sourceCode.set`, ses `dynamicVariables` ne sont remplies qu'au retour
   de l'appel (un `KeyError` sur leur nom dans le même appel).
+- **Le code d'un Script est enregistré dans la compo**, pas relu depuis le `.py` : le mettre à jour en reglissant le fichier ou par
+  `tool.script.sourceCode.set(texte)` (le Script repart sur le nouveau code). Tant que le document n'est pas enregistré, la mise à jour
+  n'existe qu'en mémoire : après un plantage, la compo rouverte a l'ancien code.
 - **Chemin du document** : remonter depuis le Script (`tool.parentElement`, puis `.parent` pour une Compo ou un pointeur) jusqu'à l'objet de classe
   `Document(TextureGenerator)`. `doc.nativeFile.toString()` donne le chemin absolu (`...\test datamosh2\test datamosh2.compo`), une chaîne vide tant
   qu'il n'a jamais été enregistré ; `doc.hasUnsavedChanges` ; son parent est le vecteur `Unsaved Documents` ou `Files`.
@@ -1154,6 +1162,32 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
 - **Une vidéo partagée que rien ne référence ne joue pas** (sa position reste à 0, aucune charge mesurée) : une bibliothèque de clips partagés ne
   coûte que les clips branchés. Deux références au même élément partagent un seul décodage et un seul transport.
 - Une entrée image d'un modifier ISF accepte une référence ; le code qui lisait `entrée.file` ou `entrée.transport` doit passer par `target`.
+- `ref.referencer.address.target.get()` renvoie le même objet Python que `sharedElement.content` (`is` marche) : on sait quel élément de
+  la bibliothèque une référence montre, quelle que soit sa classe (vidéo, `Compo`, `VideoInputTextureGenerator`).
+- **Une entrée image sans image rend tout le modifier ISF noir (R15, 13/11/2026).** Un `VideoInputTextureGenerator` sans signal
+  (`sourceResolution` `0x0` : carte de capture débranchée, source NDI injoignable), ou une vidéo vide, branché sur N'IMPORTE QUELLE entrée
+  image, même une que le shader ne lit jamais : la sortie est entièrement noire, vues de debug comprises (un `vec4(..., 0.5, 1)` constant
+  sortait noir), avec un `liveStatus` success. Ni un événement ni la recréation du modifier n'y font rien tant que l'entrée reste vide.
+  Vérification : passer le `UniformTextureGenerator` du calque en rouge ; rouge avec le modifier actif = modifier sauté, noir = il tourne
+  et sort du noir (le cas ici). Remède : ne jamais brancher en direct une source qui peut perdre son image ; contrôler le
+  `sourceResolution` de la cible de chaque entrée.
+- **Une `Compo` créée par script et branchée directement sur une entrée image ISF (`OwnedPointer`) ne dessinait rien** (noir, alors que
+  la même structure marchait ailleurs). Via un `SharedElement(TextureGenerator)` qui la contient et une `ReferenceTextureGenerator`, elle
+  joue. Une compo a toujours une image (transparente sans contenu) : mettre une entrée vidéo dans une compo partagée garde le shader en
+  vie quand le signal tombe.
+- Un élément glissé à la main dans une compo bibliothèque est un `SharedElement(TextureGenerator)` dont le `content` peut être n'importe
+  quel générateur de texture (`Compo`, `VideoInputTextureGenerator`...). Une `Compo` sans nom s'affiche `Compo Compo`
+  (`getFriendlyName()`), son label est vide.
+
+**Entrées vidéo (R15, 12-13/11/2026)**
+- `VideoInputTextureGenerator` : `device` (`VideoInputDeviceSelector` : `deviceName`, une `String` du type `Video Input 1` ; `address`,
+  `factory`), `sourceResolution` (`PixelSize`, `0x0` sans signal), `keepLastImage`, `resolution`, `extractor` (`Parametric2dPlacement`).
+  Choisir le périphérique par script : `gen.device.deviceName.set("Video Input %d" % canal)`.
+- Périphériques : `engine.devices.devices`, classes `DirectShowVideoInputDevice` (carte de capture, webcam) et `NdiVideoInputDevice`
+  (source NDI, `status` "error: The NDI Source ... is not reachable" quand l'émetteur s'arrête). Chacun a `ioChannel` (le N de
+  `Video Input N`), `identifier`, `size` (`1280x720`), `status`, `initialized`. Une carte de capture rebranchée peut revenir sous un
+  autre nom (`MiraBox Video Capture 6` puis `7`).
+- Une entrée vidéo enregistrée avec la fabrique NDI se lit `device = {factory = "Remote Video Input"}` dans le `.compo`.
 
 **Lecteur vidéo et générateurs**
 - `video.transport.player.parameters` : `in` et `out` (optionnels : `.enabled`, `.value`), `looping`, `speed`, `playMode`, `targetLength` ;
@@ -1175,6 +1209,17 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   la position du tempo ont permis de prouver qu'un gel s'enclenchait (images strictement identiques avec la vitesse à 0).
 - Interface web : Edge headless avec `--remote-debugging-port` et `websocket-client` (`Runtime.evaluate`, `Input.dispatchMouseEvent`,
   `Page.captureScreenshot`, et `Runtime.exceptionThrown` pour attraper les erreurs JavaScript de la page).
+- `EnumWindows` + `PrintWindow(hwnd, dc, 2)` sur chaque fenêtre visible du processus Smode capture l'éditeur (viewport) et la fenêtre de
+  sortie ensemble, en arrière-plan. `msedge --headless=new --dump-dom --virtual-time-budget=3000 <url>` donne la page après l'exécution de
+  ses scripts (menus remplis), sans CDP.
+- L'utilisateur peut jouer en live pendant un test : relire l'état juste avant de le restaurer, et ne pas remettre des valeurs qu'il a changées.
+
+**Coût d'un Script (R15, 13/11/2026)**
+- Lire `{d.getFriendlyName(): d for d in mod.dynamicVariables}` coûte environ 0,3 ms (environ 35 variables) ; parcourir 15 éléments partagés
+  d'une bibliothèque (`tool.content`, `file.path.get()`) 0,5 ms. Une fenêtre web qui demande son état 8 fois par seconde, chaque demande
+  refaisant ces lectures, coûtait 5,7 ms par demande (moyenne du Script 1,2-1,5 ms par image). Remède : mémo par image, effacé à la fin
+  de chaque image et juste après tout changement de structure (modifier recréé, élément ajouté), pour ne garder aucun objet Oil d'une
+  image à l'autre ; et partie lente de l'état rafraîchie deux fois par seconde ou après une commande : retour à 0,4-0,6 ms.
 
 ## Audio réactif
 
@@ -1866,6 +1911,13 @@ Un sixième crash (R15, 11/10/2026), via le pont MCP :
 Règle : ne jamais toucher un wrapper dont l'objet a pu être détruit (vecteur/map vidé, élément retiré) ; dans le
 pont, travailler dans des fonctions (variables locales) et `del` les variables de module, ne jamais parcourir
 `globals()`.
+
+Un huitième crash (R15, 13/11/2026), via le pont MCP :
+8. `dv["Video Input"].set(Oil.createObject("VideoFileTextureGenerator"))` sur une entrée image ISF qui contenait un
+   `VideoInputTextureGenerator` lié à une source NDI injoignable. Le même appel avait marché une fois quelques minutes avant ;
+   la seconde fois (après recréation du modifier), Smode n'a plus répondu puis s'est fermé. 14 minutes de travail perdues
+   (dernière sauvegarde). Règle : ne pas remplacer par script l'objet d'une entrée image d'un shader en direct pour tester quelque
+   chose ; changer des valeurs, ou passer par la réinstallation prévue.
 
 Après un plantage, Smode peut **rouvrir une vieille sauvegarde** : les sauvegardes automatiques sont dans
 `Documents\Smode Files\<projet>.project\.versions` (toutes les 5 min) ; une recherche de texte dans
