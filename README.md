@@ -1301,6 +1301,20 @@ Verified while building a real-time datamosh: one `IsfFileTextureModifier` recei
 - `TIMEDELTA`, `FRAMEINDEX`, `IMG_SIZE`, multiple passes and `PERSISTENT` work. The engine runs faster than the clip (60 Hz against 25 fps): to process each clip frame once,
   detect the change in a pass rather than rely on `FRAMEINDEX`.
 
+**ISF modifier: time, state, compile traps (R15, 12-13/11/2026, TV glitch shader)**
+- **`TIME` stays at 0 in an `IsfFileTextureModifier`**: anything driven by `TIME` (rolling bar, wobble, glitch rhythm) stays frozen, with no error.
+  Keep your own clock: a `PERSISTENT` `FLOAT` pass (`"WIDTH": "4", "HEIGHT": "1"`) whose first pass adds `TIMEDELTA` to a pixel; the main
+  pass reads it with `IMG_NORM_PIXEL(state, vec2(0.125, 0.5))`. Four pixels (centres 0.125 / 0.375 / 0.625 / 0.875) gave 16 floats of state
+  (clock, decaying hit level, random event timers) at no visible cost.
+- A `float` input with `MIN` -1 and `MAX` 1 becomes a `SignedPercentage`: like `Percentage`, `toString()` is x100 (`-35.000`), `set()` takes -0.35.
+- `mod.file.reload.trig()` recompiles the shader after the `.fs` file changed and **keeps every input value** (no need to recreate the modifier,
+  which would also kill its links).
+- `fwidth()` works: anti-aliased stripes (`smoothstep` over `fwidth`) removed the moire of a fine phosphor mask, and lines can fade out where
+  they get thinner than a pixel.
+- A local variable named like an input shadows the uniform: `float curvature = curvature * 0.5;` does not compile. Use another name.
+- Make the shader `DEFAULT`s the "clean" values (every effect at 0): the reset buttons of a window and the "modified" markers can then compare
+  to the JSON header alone. A build step that refuses a mismatch with the preset list kept the two in step.
+
 **A data texture must have a gamma of 1**
 - A video holding data (vectors, coded masks) is decoded as a picture: neutral 128 becomes about 0.22 and the shader sees a parasitic shift (37 px per frame on a +-64 px range),
   with no error. Set `video.gammaValue.enabled.set(True)` then `video.gammaValue.value.set(1.0)`.
@@ -1437,6 +1451,15 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   window together, in the background. `msedge --headless=new --dump-dom --virtual-time-budget=3000 <url>` gives the page after its
   scripts ran (filled menus), without CDP.
 - The user may be playing live while a test runs: read the state just before restoring it, and do not put back values the user changed.
+
+**Data that outlives the compo (R15, 13/11/2026)**
+- A plugin's user presets that must survive an unsaved compo and be shared by every document: a JSON file per Windows user
+  (`os.path.join(os.environ["APPDATA"], "<Plugin>", "presets.json")`), written atomically (`.tmp` then `os.replace`), its list read again
+  only when `os.path.getmtime` changes (two documents may write it). Do the file work in the task run on the SMODE thread with the
+  values read from the modifier, not in the HTTP thread.
+- Store presets by input name (`getFriendlyName()`) and, on load, start from the clean defaults: inputs added by a later version then take
+  their default instead of keeping the previous look's value.
+- Web window: a `position:sticky` header stops after one screen if `body` has `height:100%`; use `min-height:100%`.
 
 **Script cost (R15, 13/11/2026)**
 - Reading `{d.getFriendlyName(): d for d in mod.dynamicVariables}` costs about 0.3 ms (about 35 variables); scanning 15 shared elements
