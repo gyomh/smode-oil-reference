@@ -402,6 +402,27 @@ plutôt que corriger les objets existants en place.
   information in geometry » ; à rendre avec `ThickLinesGeometryRenderer` (`map` = `UniformTextureGenerator`
   dont `.color` règle la couleur du trait ; `thickness` en px). `SphereGeometryGenerator.precision` =
   `Precision2d` (`.uniform = False` avant de régler `.x/.y`). `CapsuleGeometryGenerator` : axe Y, pivot à la base.
+- **Les générateurs de `GeometryLayer` (R15, 14/11/2026)**, tous créés par `Oil.createObject` sur `GeometryLayer.generator` :
+  maillages `PlaneGeometryGenerator`, `BoxGeometryGenerator`, `CapsuleGeometryGenerator`, `CylinderGeometryGenerator`,
+  `GeosphereGeometryGenerator`, `SphereGeometryGenerator`, `TorusGeometryGenerator` ; courbes `CircleGeometryGenerator`,
+  `FunctionSplineGeometryGenerator`, `HelixGeometryGenerator`, `KnotGeometryGenerator`, `RectangleGeometryGenerator`,
+  `SegmentGeometryGenerator`, `StarGeometryGenerator`, `TextGeometryGenerator` ; points `GridPointsGeometryGenerator`,
+  `ParticlesGeometryGenerator`, `RandomPointsGeometryGenerator` ; autres `GroupGeometryGenerator`,
+  `StageDisplayGeometryGenerator`, `TrackingSystemGeometryGenerator`. Renderers : `SurfaceGeometryRenderer` (maillages),
+  `ThickLinesGeometryRenderer` (`thickness` px, `map`), `TubeLinesGeometryRenderer` (`radius`), `SimplePointsGeometryRenderer`
+  (`size` px, `map`), `BallPointsGeometryRenderer` (`ballsRadius`). Les courbes veulent un renderer de lignes, les points un de points.
+- **`size.linked` contre `precision.uniform`** : `size.linked` (Size3d) ne fait que lier les champs de l'interface ;
+  `Precision2d/3d.uniform` IMPOSE une seule valeur à tous les axes (x = y = z). Pour garder un rapport entre axes, laisser
+  `uniform` à False et calculer les valeurs soi-même.
+- **Formes, textes, géométrie partagés** : en plus de `SharedElement(TextureGenerator)` et `SharedElement(GeometryV9Generator)`,
+  il existe `SharedElement(ShapeGenerator)` et `SharedElement(TextGenerator)`, avec `ReferenceShapeGenerator` /
+  `ReferenceTextGenerator` sur les calques (`referencer.address.location = 0`,
+  `elementPointer.set(se.getVariableByName("content"))`, `shared = True`). **`SharedElement(Light)` n'existe pas**
+  (`createObject` échoue) : les lumières ne se partagent pas ainsi.
+- **Formes 2D par classe** : `RectangleShapeGenerator`, `CircleShapeGenerator`, `NSidesShapeGenerator` (`sides`),
+  `StarShapeGenerator` (`points`, `innerRadius`, `twist`), `LineShapeGenerator` (`segment.begin` / `segment.end`),
+  `TextShapeGenerator` (`text`, `font.name`, `font.size`). Dans un `GroupShapeGenerator`, chaque sous-forme a ses couleurs via un
+  `FillColorShapeModifier` / `EdgeColorShapeModifier` (`.color.color`, un `HsvColor`) dans ses modifiers.
 - `NullLayer` : **invisible et non sélectionnable dans le viewport** (seulement dans l'arbre) ; pour une
   poignée cliquable, utiliser une vraie géométrie (plan).
 - `Group3dLayer` : `worldMatrix` lisible (colonnes `m.x/.y/.z/.w`, vaut 0 avant la 1re évaluation) ;
@@ -933,6 +954,8 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   fait dans l'interface tourne. Correctif testé : `t = generator.transport; t.player = Oil.createObject("StandalonePlayer"); t.play.trig()`
   (état `ready` juste après l'affectation, `playing` à l'appel suivant : 195 particules à 1,95 s). « Remove standalone » puis remise du
   player dans l'interface marche aussi. Vérifier avec `transport.state` / `transport.position` dans un appel SUIVANT.
+  Depuis un agent « At Every Update » (14/11/2026), un `play.trig()` dans le même appel que l'affectation ne suffisait pas : laisser
+  quelques frames au nouveau player dans l'arbre, puis `play.trig()` (état 0 ready, 1 playing, 2 paused, 3 finalized).
 - Champs : `GravityField.force`, `TurbulenceField` (`intensity`, `forceStrength`, `positionStrength`, `velocityStrength`, `noise`,
   `curlNoise`, `transport` propre), `AttractorField` (`position`, `power`, `disperser`), `LorenzAttractorField` (`center`, `scale`,
   `rho`, `sigma`, `beta`, `positionStrength`), `VortexField` (`strength`, `attraction`, `attenuation`, `placement`), `FrictionField`

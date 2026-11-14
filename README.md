@@ -405,6 +405,25 @@ rather than fixing the existing objects in place.
   `UniformTextureGenerator` whose `.color` sets the line colour; `thickness` in px).
   `SphereGeometryGenerator.precision` = `Precision2d` (`.uniform = False` before setting `.x/.y`).
   `CapsuleGeometryGenerator`: Y axis, pivot at the base.
+- **The `GeometryLayer` generators (R15, 14/11/2026)**, all made by `Oil.createObject` on a `GeometryLayer.generator`:
+  meshes `PlaneGeometryGenerator`, `BoxGeometryGenerator`, `CapsuleGeometryGenerator`, `CylinderGeometryGenerator`,
+  `GeosphereGeometryGenerator`, `SphereGeometryGenerator`, `TorusGeometryGenerator`; curves `CircleGeometryGenerator`,
+  `FunctionSplineGeometryGenerator`, `HelixGeometryGenerator`, `KnotGeometryGenerator`, `RectangleGeometryGenerator`,
+  `SegmentGeometryGenerator`, `StarGeometryGenerator`, `TextGeometryGenerator`; points `GridPointsGeometryGenerator`,
+  `ParticlesGeometryGenerator`, `RandomPointsGeometryGenerator`; others `GroupGeometryGenerator`,
+  `StageDisplayGeometryGenerator`, `TrackingSystemGeometryGenerator`. Renderers: `SurfaceGeometryRenderer` (meshes),
+  `ThickLinesGeometryRenderer` (`thickness` px, `map`), `TubeLinesGeometryRenderer` (`radius`), `SimplePointsGeometryRenderer`
+  (`size` px, `map`), `BallPointsGeometryRenderer` (`ballsRadius`). Curves need a lines renderer, points a points renderer.
+- **`size.linked` vs `precision.uniform`**: `size.linked` (Size3d) only ties the UI fields; `Precision2d/3d.uniform` FORCES
+  one value for every axis (x = y = z). To keep a ratio between axes, leave `uniform` False and compute the values yourself.
+- **Shared shapes, texts, geometry**: besides `SharedElement(TextureGenerator)` and `SharedElement(GeometryV9Generator)`,
+  `SharedElement(ShapeGenerator)` and `SharedElement(TextGenerator)` exist, with `ReferenceShapeGenerator` /
+  `ReferenceTextGenerator` on the layers (`referencer.address.location = 0`, `elementPointer.set(se.getVariableByName("content"))`,
+  `shared = True`). **`SharedElement(Light)` does not exist** (`createObject` fails): lights cannot be shared that way.
+- **2D shapes by class**: `RectangleShapeGenerator`, `CircleShapeGenerator`, `NSidesShapeGenerator` (`sides`),
+  `StarShapeGenerator` (`points`, `innerRadius`, `twist`), `LineShapeGenerator` (`segment.begin` / `segment.end`),
+  `TextShapeGenerator` (`text`, `font.name`, `font.size`). In a `GroupShapeGenerator` each sub-shape gets its own colours
+  with a `FillColorShapeModifier` / `EdgeColorShapeModifier` (`.color.color`, an `HsvColor`) in its modifiers.
 - `NullLayer`: **invisible and not selectable in the viewport** (only in the tree); for a
   clickable handle, use real geometry (a plane).
 - `Group3dLayer`: `worldMatrix` readable (columns `m.x/.y/.z/.w`, equals 0 before the first
@@ -1159,6 +1178,8 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   built in the UI runs. Fix, tested: `t = generator.transport; t.player = Oil.createObject("StandalonePlayer"); t.play.trig()`
   (state `ready` right after the assignment, `playing` on the next call: 195 particles at 1.95 s). Doing "remove standalone" and
   adding the player back in the UI also works. Check with `transport.state` / `transport.position` in a LATER call.
+  From an "At Every Update" agent (14/11/2026), a `play.trig()` in the same call as the assignment was not enough: give the new
+  player a few frames in the tree, then `play.trig()` (state 0 ready, 1 playing, 2 paused, 3 finalized).
 - Fields: `GravityField.force`, `TurbulenceField` (`intensity`, `forceStrength`, `positionStrength`, `velocityStrength`, `noise`,
   `curlNoise`, own `transport`), `AttractorField` (`position`, `power`, `disperser`), `LorenzAttractorField` (`center`, `scale`,
   `rho`, `sigma`, `beta`, `positionStrength`), `VortexField` (`strength`, `attraction`, `attenuation`, `placement`), `FrictionField`
