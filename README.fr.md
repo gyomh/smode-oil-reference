@@ -946,6 +946,23 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   (`.file.path.set("Standard Pack/Texture/Particle/Dot White b.png")`), `size.objectSpaceSize.width/height`.
 - Fondu selon l'âge : `PointAttributesGeometryModifier` avec `selector = AgeGeometryMask` et `opacity` = une `KeyframeFunction`
   (`.keyframes`, chacune avec `.position` 0..1 = âge et `.key` = valeur ; cloner une clé et `append` pour en ajouter).
+- **Couleur / opacité selon l'âge, par script (R15, 15/11/2026)** : `PointAttributesGeometryModifier.color` est une
+  `KeyframeFunction(Percentage, HsvColor)`, `.opacity` une `KeyframeFunction(Percentage, Percentage)`. Les clés créées par
+  `Oil.createObject("Keyframe(Percentage, HsvColor)")` ont des interpolateurs **Step** : une couleur puis un saut. Mettre
+  `linkInterpolators = False` et `inputInterpolator` / `outputInterpolator = Oil.createObject("LinearKeyframeInterpolator")`.
+  **Le viewer 3D montre les particules sans les fondus d'opacité** : un dégradé sur toute la vie avec de longs fondus ne
+  montre au rendu 2D que son milieu (mélange des deux couleurs). Tenir la couleur de naissance jusqu'à la fin de
+  l'apparition, atteindre la couleur de fin au début de la disparition. En mélange additif, des milliers de particules
+  superposées ignorent presque un fondu alpha et additionnent leurs couleurs (rose + vert = beige) : faire aussi glisser la
+  couleur vers le noir.
+- **Émetteurs et directions** : `positions` = `PointPositionSampler`, `LinePositionSampler` (`segment.begin/end`),
+  `PlanePositionSampler` (`size`, `linked` d'abord ; `placement`), `SpherePositionSampler` (`sphere`, `penetration`),
+  `BoxPositionSampler` (`size`). `emissionParameters.directions` = `RandomDirectionSampler`, `ParallelDirectionSampler`
+  (`direction`, `spread`), `NormalDirectionSampler`, `TargetDirectionSampler` (`target`, `mode`). **`Direction3d.theta` est
+  l'angle depuis la verticale HAUTE** (pi = vers le bas, comme l'exemple des pétales), `phi` le cap : (0, 0) pointe vers le haut.
+- Sprites du Standard Pack : `SpritePointsGeometryRenderer.maps[0].file.path.set("Standard Pack/Texture/Particle/<nom>.png")`
+  (Dot White a/b/c, Circle Soft a/b/c, Blur a/b/c, Cloud, Disc, Diam a, Star1-4, Shimer 01-03, Rainbow Flare, Erable, Oak...).
+  Un `TurbulenceField` a son propre transport (son bruit bouge) : créé par script, il lui faut aussi un nouveau `StandalonePlayer`.
 - **Le générateur a son propre transport, un `StandalonePlayer` (`generator.transport.player`), indépendant de la timeline principale.**
   Aucun bloc sur la timeline principale n'est nécessaire (ne pas en ajouter pour un système de particules). Paramètres : `launchMode`
   restartWithActivation, `automateTransport` vrai, `looping`, `speed`, `targetLength`.

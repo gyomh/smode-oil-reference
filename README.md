@@ -1170,6 +1170,22 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   (`.file.path.set("Standard Pack/Texture/Particle/Dot White b.png")`), `size.objectSpaceSize.width/height`.
 - Fade by age: `PointAttributesGeometryModifier` with `selector = AgeGeometryMask` and `opacity` = a `KeyframeFunction`
   (`.keyframes`, each with `.position` 0..1 = age and `.key` = value; clone a key and `append` to add one).
+- **Colour / opacity by age, by script (R15, 15/11/2026)**: `PointAttributesGeometryModifier.color` is a
+  `KeyframeFunction(Percentage, HsvColor)`, `.opacity` a `KeyframeFunction(Percentage, Percentage)`. Keys made with
+  `Oil.createObject("Keyframe(Percentage, HsvColor)")` have **Step** interpolators: one colour, then a jump. Set
+  `linkInterpolators = False` and `inputInterpolator` / `outputInterpolator = Oil.createObject("LinearKeyframeInterpolator")`.
+  **The 3D viewer shows the particles without the opacity fades**: a gradient over the whole life with long fades shows
+  only its middle (a mix of both colours) in the 2D render. Hold the birth colour until the fade-in ends, reach the end
+  colour when the fade-out starts. In additive blending, thousands of overlapping particles barely show an alpha fade and
+  add their colours (pink + green = beige): fade the colour to black as well.
+- **Emitters and directions**: `positions` = `PointPositionSampler`, `LinePositionSampler` (`segment.begin/end`),
+  `PlanePositionSampler` (`size`, `linked` first; `placement`), `SpherePositionSampler` (`sphere`, `penetration`),
+  `BoxPositionSampler` (`size`). `emissionParameters.directions` = `RandomDirectionSampler`, `ParallelDirectionSampler`
+  (`direction`, `spread`), `NormalDirectionSampler`, `TargetDirectionSampler` (`target`, `mode`). **`Direction3d.theta` is
+  the angle from straight UP** (pi = down, as in the falling petals example), `phi` the heading: (0, 0) points up.
+- Sprites of the Standard Pack: `SpritePointsGeometryRenderer.maps[0].file.path.set("Standard Pack/Texture/Particle/<name>.png")`
+  (Dot White a/b/c, Circle Soft a/b/c, Blur a/b/c, Cloud, Disc, Diam a, Star1-4, Shimer 01-03, Rainbow Flare, Erable, Oak...).
+  A `TurbulenceField` has its own transport (its noise moves): a script-made one needs a new `StandalonePlayer` too.
 - **The generator has its own transport, a `StandalonePlayer` (`generator.transport.player`), not tied to the main timeline.** No
   block on the main timeline is needed (do not add one for a particle system). Parameters: `launchMode` restartWithActivation,
   `automateTransport` true, `looping`, `speed`, `targetLength`.
