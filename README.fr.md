@@ -1,6 +1,6 @@
 # Smode Oil API — Référence non-officielle
 
-*[English version](README.md)*
+*[English version](README.md)* · *[CLASSES.md](CLASSES.md) : 94 classes (modifiers de texture, masques, générateurs, géométrie 3D) avec chaque réglage simple, sa classe Oil, son défaut et ses choix, lus dans SMODE R15*
 
 > Smode Tech ne publie pas de documentation de l'API Oil/SmodeSDK pour un pilotage externe.
 > Tout ce qui suit vient de reverse engineering (introspection live via `dir()` / `Oil.docMe()`)
@@ -2101,6 +2101,15 @@ dans le fil principal et les passer en argument au fil.
 - `AmbientLight` (intensity, `diffuse.color`), `PlaneGeometryGenerator` (size.width/height ; rotation x -pi/2 pour un sol).
 
 ---
+
+## Catalogue des classes
+
+[CLASSES.md](CLASSES.md) (en anglais) liste 94 classes avec leurs 1079 réglages simples, lus sur des objets neufs dans SMODE
+R15 (chemin, classe Oil, défaut, choix des énumérations, presets disponibles) : les modifiers de texture des menus
+(`...TextureModifier`), les masques de texture, les générateurs de texture, les sources de couleur 3D d'un canal PBR, les
+générateurs de géométrie, `NullLayer` et `GroupShapeGenerator`. Généré par l'agent du Node Editor (tâche `catalog` :
+`Oil.createObject` sur un objet jetable, variables parcourues sur deux niveaux) ; pour l'étendre, y ajouter une classe et
+relancer le générateur.
 
 ## Projets liés
 
