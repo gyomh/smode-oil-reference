@@ -606,6 +606,12 @@ rather than fixing the existing objects in place.
   resets its own button, so every click is a new False -> True change. A `Parameter(Boolean)` (on/off) linked to such a
   button needs two clicks: the Script resets the button but the parameter keeps its state, so the next click pushes
   a value the button already has. A bank Trigger fires from Python with `p.value.trig()`.
+  Built by script (R15, 17/11/2026): SMODE does not add the modifier itself, append it to the **parameter**
+  (`p.modifiers.append(Oil.createObject("SetConstantLinkModifier"))`; a `ParameterLinkTarget` has no `modifiers`). Its
+  `value` is an `ObjectOwnedPointer`, `None` until given an object: `v = Oil.createObject("Boolean"); v.set(True);
+  m.getVariableByName("value").set(v)`. Link target = the Script's setting itself (`target.target.set(tool.mySetting)`).
+  **Trap**: making the link (or relinking it) pushes the constant True into the target at once, as if clicked: a Script
+  that acts on its button settings must ignore them for a few frames after linking, and after a project load.
 
 - **Key times below 0 are clamped to 0** (`cue.createKeyframe(param, -0.1, False)` stores a key at 0.0, a second one at 0.0 when 0
   is keyed too), keys past the end of the cue are kept. A Smooth (Catmull-Rom) loop therefore needs lead-in keys inside
@@ -731,7 +737,9 @@ rather than fixing the existing objects in place.
   value of the Parameter = current value of the variable. The Parameter takes the colour of its
   bank (`colorLabel`). See also the "Self-installing Scripts" section: the linked Parameter pushes
   its own value back onto the script.
-- The `colorLabel` of any element: `c = o.colorLabel; c.red.set(r/255)` (values 0-1, `SrgbColor`).
+- The `colorLabel` of any element: `c = o.colorLabel; c.red.set(r/255)` (values 0-1, `SrgbColor`). Trap: a component's
+  `toString()` reads back in percent (`64.706` for A5), but `set()` takes 0-1: copying the value read clamps it to FF.
+  `c.toString()` gives the hex (`FFA500`).
 
 ## Checking visually (outside the API)
 

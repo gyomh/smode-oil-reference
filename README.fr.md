@@ -576,7 +576,9 @@ plutôt que corriger les objets existants en place.
   p.targets.append(lt); bank.parameters.append(p)`. Valeur initiale du Parameter = valeur courante de la
   variable. Le Parameter prend la couleur de son bank (`colorLabel`). Voir aussi la section « Scripts qui
   s'auto-installent » : le Parameter lié repose sa propre valeur sur le script.
-- Le `colorLabel` de tout élément : `c = o.colorLabel; c.red.set(r/255)` (valeurs 0-1, `SrgbColor`).
+- Le `colorLabel` de tout élément : `c = o.colorLabel; c.red.set(r/255)` (valeurs 0-1, `SrgbColor`). Piège : le `toString()`
+  d'une composante se relit en pourcentage (`64.706` pour A5), mais `set()` prend 0-1 : recopier la valeur lue la sature à FF.
+  `c.toString()` donne l'hexa (`FFA500`).
 
 ## Vérifier visuellement (hors API)
 
@@ -1134,6 +1136,16 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   (begin > end) s'écrase sur une seule valeur, utiliser begin < end avec `inverse` à True ; les liens d'une banque neuve ne s'appliquent qu'après
   `parameter.applyNow.trig()` ; une palette par paliers = `FunctionLinkModifier(Percentage, Angle)` dont la `KeyframeFunction(Percentage, Angle)` démarre avec
   0 clé (créer des objets `Keyframe(Percentage, Angle)` à la main, Step par défaut) pilotant la `hue` d'un `HueSaturationLuminanceTextureModifier` placé EN PREMIER dans les effets de la compo.
+- **Piloter un bouton `Oil.Boolean` d'un Script depuis une banque (R15)** : un `Parameter(Trigger)` relié au réglage avec un
+  `SetConstantLinkModifier` à True (à False par défaut, le clic ne fait rien) ; le Script remet son bouton à False, chaque clic
+  est donc un nouveau passage False -> True. Un `Parameter(Boolean)` (on / off) relié à un tel bouton demande deux clics.
+  Un Trigger de banque se déclenche en Python par `p.value.trig()`.
+  Construit par script (17/11/2026) : SMODE n'ajoute pas le modifier, l'ajouter au **paramètre**
+  (`p.modifiers.append(Oil.createObject("SetConstantLinkModifier"))` ; un `ParameterLinkTarget` n'a pas de `modifiers`). Son
+  `value` est un `ObjectOwnedPointer`, `None` tant qu'on ne lui donne pas d'objet : `v = Oil.createObject("Boolean"); v.set(True);
+  m.getVariableByName("value").set(v)`. Cible du lien = le réglage du Script lui-même (`target.target.set(tool.monReglage)`).
+  **Piège** : créer le lien (ou le refaire) pousse aussitôt le True dans la cible, comme un clic : un Script qui agit sur ses
+  réglages-boutons doit les ignorer quelques images après la création des liens, et après le chargement du projet.
 - **Voir le rendu** : le viewport peut être capturé (voir « Vérifier visuellement ») : deux scripts PowerShell (rectangle de la fenêtre + `CopyFromScreen` : une capture simple, et une planche de contact du
   viewport à intervalle fixe, qui refuse de capturer si Smode n'est pas au premier plan) ; la fenêtre Smode peut être à des coordonnées négatives (-8,-8).
 - Un set VJ à 4 systèmes (MotionLines + feedback + flou en 1080p, quatre systèmes actifs à opacité 0) tournait à environ 10 fps sur la machine de l'auteur (rapporté,
