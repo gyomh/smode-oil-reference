@@ -2011,7 +2011,9 @@ et le réécrit depuis un éditeur de nodes externe.
   commence à y = 80) : chaque clic tombe 65-80 px à côté de ce qui est dessiné, et UI Automation annonce la barre du haut à
   y = 2 alors que la fenêtre commence à y = 67. Une fenêtre restaurée et posée à la main sur la zone de travail est juste.
   Remède hors de SMODE : un veilleur qui restaure et redimensionne la fenêtre agrandie sur la zone de travail
-  ([smode-maximize-fix](https://github.com/gyomh/smode-maximize-fix)). Vu seulement avec une barre déplacée en haut (StartAllBack).
+  ([smode-maximize-fix](https://github.com/gyomh/smode-maximize-fix)). Cause : Windows 11 avec la barre des tâches déplacée
+  ailleurs qu'en bas (StartAllBack, ExplorerPatcher) et JUCE, qui ne tolère pas une barre des tâches ailleurs qu'en bas de
+  l'écran ; pas un bug de SMODE en soi, toute application JUCE agrandie sur un tel bureau est touchée.
 - **Liens affichés "Disconnected"** après création via l'API alors qu'ils fonctionnent réellement
   (vérifié visuellement, la donnée circule). Pas résolu par l'ordre de création. Fix constaté :
   fermer et rouvrir le projet force un rechargement complet qui corrige l'affichage — cache

@@ -2248,7 +2248,9 @@ and writes it back from an external node editor.
   y = 80): every click lands 65-80 px away from what is drawn, and UI Automation reports the top bar at y = 2 while the
   window starts at y = 67. A window restored and placed on the work area by hand is fine. Fix outside SMODE: a watcher that
   restores and resizes the maximised window to the work area
-  ([smode-maximize-fix](https://github.com/gyomh/smode-maximize-fix)). Only seen with a taskbar moved to the top (StartAllBack).
+  ([smode-maximize-fix](https://github.com/gyomh/smode-maximize-fix)). Cause: Windows 11 with the taskbar moved away from
+  the bottom (StartAllBack, ExplorerPatcher) and JUCE, which does not tolerate a taskbar anywhere but at the bottom of the
+  screen; not a SMODE bug as such, any JUCE application maximised on such a desktop is affected.
 - **Links shown as "Disconnected"** after creation through the API although they really work
   (checked visually, the data flows). Not solved by the creation order. Fix observed: closing and
   reopening the project forces a full reload that fixes the display — a display cache that is not
