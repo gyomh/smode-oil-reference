@@ -868,8 +868,8 @@ Construit pour une animation de faux OS (voir le motif `os_anim_crt.py`), sur `c
   `size.height = 3`, `evenColor` alpha 0, `oddColor` noir alpha 0.35, sur un `TextureLayer` en haut de pile.
 - **Vignette** : `GradientTextureGenerator` (`type` `Circular2dGradient`, `gradient` `BitoneColorFunction`) : `beginColor`
   alpha 0 -> `endColor` noir alpha 0.95 ; le cercle est `position` (`Ellipse` : `center`, `size` en **pixels**, `rotation`),
-  2600 x 1600 sur une compo 1920 x 1080 (`size.linked = False` d'abord). `renderer.blendingMode` d'un `TextureLayer` n'est pas
-  un enum simple (`toString()` = `BlendingMode()`) : rester en mode Normal et jouer sur l'alpha.
+  2600 x 1600 sur une compo 1920 x 1080 (`size.linked = False` d'abord). `renderer.blendingMode` d'un `TextureLayer` : il se
+  règle par son index, voir « Modes de fusion » plus bas (17/11/2026 ; une note précédente le disait non pilotable).
 - **`clear()` sur une scène construite plante Smode** (31/10/2026, deux fois) : `comp.layers.clear()` +
   `comp.modifiers.clear()` sur un Compo de 100+ calques avec un Warp. Reconstruire depuis un Compo vide. **Vider un document Compo autonome (pas de Scènes à retirer) marche avec `removeAt`, un élément à la fois** (R15, 31/10/2026, 13 calques imbriqués + Warp + Bloom + un script, sans plantage) : `tools.removeAt(i)` pour le script, `modifiers.removeAt(0)` deux fois, puis `layers.removeAt(names.index(nom))` de haut en bas ; les pistes de timeline des calques retirés disparaissent d'elles-mêmes (0 restante). **Un script qui met des calques en cache dans `globals()` doit indexer son cache sur l'objet script lui-même** (`c_ is script`), pas sur le Compo : après avoir vidé et reconstruit dans le même document, le Compo est le même objet Python, donc le cache gardait 148 calques périmés (détruits).
 
@@ -2015,6 +2015,32 @@ et le réécrit depuis un éditeur de nodes externe.
 - Déplacer un émetteur, c'est déplacer son sampler, pas le calque : `PointPositionSampler.placement.position`,
   `PlanePositionSampler.placement.position`, `LinePositionSampler.segment.begin` / `.end`, `SpherePositionSampler.sphere.center` ;
   un `BoxPositionSampler` n'a pas de position propre (déplacer le calque).
+
+## Modes de fusion, calques vidéo, séquences d'images, éléments partagés dans une Compo (R15, 17/11/2026)
+
+- **Modes de fusion** : `layer.renderer.blendingMode` sur `TextureLayer`, `TextLayer`, `ShapeLayer` ; sur l'élément
+  lui-même pour un `Group3dLayer` (`passThrough` par défaut) et une `Scene`. `GroupLayer` (groupe 2D) et `GeometryLayer`
+  n'en ont pas. `toString()` donne le nom, `get()` l'index, **`set()` ne prend que l'index** (`set("multiply")` lève
+  `TypeError`). Ordre (index 0 à 29) : `passThrough`, `replace`, `normal`, `dissolve`, `darken`, `multiply`, `colorBurn`,
+  `linearBurn`, `darkerColor`, `lighten`, `screen`, `colorDodge`, `linearDodge`, `lighterColor`, `overlay`, `softLight`,
+  `hardLight`, `vividLight`, `linearLight`, `pinLight`, `hardMix`, `difference`, `exclusion`, `subtract`, `divide`, `hue`,
+  `saturation`, `color`, `luminosity`, `alpha` (vérifié : 0 passThrough, 2 normal, 5 multiply, 10 screen, 29 alpha).
+- **Calque vidéo par script** : `TextureLayer` + `VideoFileTextureGenerator` (`file.path`), `transport.player =
+  StandalonePlayer()` avec `parameters.looping` ; `transport.play.trig()` quelques images après que le calque est dans
+  l'arbre (état ensuite `playing`, `transport.position` en secondes).
+- **Séquences d'images** : SMODE lit comme une vidéo un **dossier nommé `<nom>@<cadence>.imagesequence`** (son propre
+  export le nomme ainsi : `ExplosionCartoon@50.imagesequence`). Par script : `VideoFileTextureGenerator.file.path` = le
+  dossier. Les images dedans peuvent porter n'importe quel nom (vérifié : `x_00001.png`, `00001.png`, `shot_v2.0001.png`,
+  toutes lues en 256 x 256, en lecture). Un dossier d'images ordinaire n'est pas lu : un outil peut créer ce dossier à
+  côté des images avec des liens physiques (`os.link`, instantané, sans place prise sur le même disque) et le renommer
+  pour changer la cadence.
+- **Éléments partagés dans les outils d'une Compo** : il n'y a pas que les outils de Show qui contiennent des
+  `SharedElement(...)` (un plugin peut garder ses médias dans les outils d'une sous-Compo). Un calque qui en montre un a
+  un `ReferenceTextureGenerator` (nommé `[[<nom>]]` par SMODE) ; `generator.referencer.address.target.get()` est le
+  contenu partagé (comparer avec `is`). Les entrées image d'un modifier ISF sont des `OwnedPointer(TextureGenerator)` de
+  ses `dynamicVariables` : le même test de référence dit quel élément partagé chacune montre.
+- **Parcours** : un calque Compo est un `TextureLayer` dont le `generator` est la `Compo` (`layers`, `tools`) ; le contenu
+  d'un `SharedElement` est `.content`. `element.sourceElements` est une méthode (`sourceElements()`).
 
 ## Bugs UI connus
 

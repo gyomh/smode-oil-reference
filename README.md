@@ -1102,8 +1102,8 @@ Built for a fake-OS animation (see `os_anim_crt.py` pattern), all on `compo.modi
   `evenColor` alpha 0, `oddColor` black alpha 0.35, on a top `TextureLayer`.
 - **Vignette**: `GradientTextureGenerator` (`type` `Circular2dGradient`, `gradient` `BitoneColorFunction`): `beginColor`
   alpha 0 -> `endColor` black alpha 0.95; the circle is `position` (`Ellipse`: `center`, `size` in **pixels**, `rotation`),
-  2600 x 1600 on a 1920 x 1080 compo (`size.linked = False` first). `renderer.blendingMode` of a `TextureLayer` is not a
-  plain enum (`toString()` = `BlendingMode()`): keep the Normal mode and use alpha.
+  2600 x 1600 on a 1920 x 1080 compo (`size.linked = False` first). `renderer.blendingMode` of a `TextureLayer`: set it
+  by index, see "Blending modes" below (17/11/2026; an earlier note here said it could not be driven).
 - **`clear()` on a built scene crashes Smode** (31/10/2026, twice): `comp.layers.clear()` + `comp.modifiers.clear()` on a
   Compo holding 100+ layers and a Warp. Rebuild from an empty Compo instead. **Emptying a standalone Compo document (no Scenes to drop) works with `removeAt`, one element at a time** (R15, 31/10/2026, 13 nested layers + Warp + Bloom + a script, no crash): `tools.removeAt(i)` for the script, `modifiers.removeAt(0)` twice, then `layers.removeAt(names.index(name))` from the top down; the timeline tracks of the removed layers disappear by themselves (0 left). **A script that caches layers in `globals()` must key its cache on the script object itself** (`c_ is script`), not on the Compo: after emptying and rebuilding in the same document the Compo is the same Python object, so the cache kept 148 stale (destroyed) layers.
 
@@ -2248,6 +2248,31 @@ and writes it back from an external node editor.
 - Moving an emitter means moving its sampler, not the layer: `PointPositionSampler.placement.position`,
   `PlanePositionSampler.placement.position`, `LinePositionSampler.segment.begin` / `.end`, `SpherePositionSampler.sphere.center`;
   a `BoxPositionSampler` has no position of its own (move the layer).
+
+## Blending modes, video layers, image sequences, shared elements in a Compo (R15, 17/11/2026)
+
+- **Blending modes**: `layer.renderer.blendingMode` on `TextureLayer`, `TextLayer`, `ShapeLayer`; on the element itself for
+  a `Group3dLayer` (`passThrough` by default) and a `Scene`. `GroupLayer` (2D group) and `GeometryLayer` have none.
+  `toString()` gives the name, `get()` the index, **`set()` takes the index only** (`set("multiply")` raises
+  `TypeError`). Order (index 0 to 29): `passThrough`, `replace`, `normal`, `dissolve`, `darken`, `multiply`, `colorBurn`,
+  `linearBurn`, `darkerColor`, `lighten`, `screen`, `colorDodge`, `linearDodge`, `lighterColor`, `overlay`, `softLight`,
+  `hardLight`, `vividLight`, `linearLight`, `pinLight`, `hardMix`, `difference`, `exclusion`, `subtract`, `divide`, `hue`,
+  `saturation`, `color`, `luminosity`, `alpha` (checked: 0 passThrough, 2 normal, 5 multiply, 10 screen, 29 alpha).
+- **Video layer by script**: `TextureLayer` + `VideoFileTextureGenerator` (`file.path`), `transport.player =
+  StandalonePlayer()` with `parameters.looping`; `transport.play.trig()` a few frames after the layer is in the tree
+  (state then `playing`, `transport.position` in seconds).
+- **Image sequences**: SMODE reads a **folder named `<name>@<fps>.imagesequence`** as a video (its own export names it
+  so: `ExplosionCartoon@50.imagesequence`). By script: `VideoFileTextureGenerator.file.path` = the folder. The frames
+  inside may have any name (checked: `x_00001.png`, `00001.png`, `shot_v2.0001.png`, all read at 256 x 256, playing).
+  A plain folder of frames is not read: a tool can make that folder next to the frames with hard links (`os.link`,
+  instant, no space on the same drive) and rename it to change the fps.
+- **Shared elements in a Compo's tools**: not only Show's tools hold `SharedElement(...)` (a plugin may keep its media
+  in a sub-Compo's tools). A layer showing one has a `ReferenceTextureGenerator` (named `[[<name>]]` by SMODE);
+  `generator.referencer.address.target.get()` is the shared content (compare with `is`). The image inputs of an ISF
+  modifier are `OwnedPointer(TextureGenerator)` in its `dynamicVariables`: the same reference test tells which shared
+  element each one shows.
+- **Walking**: a Compo layer is a `TextureLayer` whose `generator` is the `Compo` (`layers`, `tools`); a
+  `SharedElement`'s content is `.content`. `element.sourceElements` is a method (`sourceElements()`).
 
 ## Known UI bugs
 
