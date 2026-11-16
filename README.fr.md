@@ -1372,6 +1372,10 @@ ET modifiable : `dv[i].get()`, `dv[i].set(v)`, `dv[i].getFriendlyName()` (libell
 Un câblage de slots par script est donc possible. Les valeurs et les liens (Parameter bank →
 paramètre) **survivent à une recompilation** tant que le nom de la variable ne change pas ; renommer
 une variable détruit l'ancien paramètre (nouvel objet, valeur par défaut).
+- **Vu autrement après un remplacement de code (R15, 30/10/2026)** : `tool.script.sourceCode.set(nouveauSource)` sur un Script
+  dont l'utilisateur avait changé les options (N Bands = 10) les a remises aux défauts écrits dans le nouveau source (64).
+  Après avoir remplacé le code d'un Script qui a des réglages, les relire et les reposer par `dynamicVariables`, puis
+  `execute.trig()`.
 - Libellé affiché = nom de variable : camelCase coupé en mots, **espace inséré avant un chiffre**
   (`bone3Rotation` → « Bone 3Rotation », `boneRotation3` → « Bone Rotation 3 », `BONE3Rotation` →
   inchangé). Impossible d'obtenir « Bone3 Rotation » ni un numéro dynamique côté Script ; le libellé
@@ -2002,6 +2006,12 @@ et le réécrit depuis un éditeur de nodes externe.
 
 ## Bugs UI connus
 
+- **Fenêtre agrandie avec la barre des tâches Windows en haut (R15, 18/10/2026)** : SMODE (fenêtre JUCE sans cadre) calcule
+  sa zone client comme si la barre n'existait pas (client en (0,0), 3200x2080 sur un écran 3200x2000 dont la zone de travail
+  commence à y = 80) : chaque clic tombe 65-80 px à côté de ce qui est dessiné, et UI Automation annonce la barre du haut à
+  y = 2 alors que la fenêtre commence à y = 67. Une fenêtre restaurée et posée à la main sur la zone de travail est juste.
+  Remède hors de SMODE : un veilleur qui restaure et redimensionne la fenêtre agrandie sur la zone de travail
+  ([smode-maximize-fix](https://github.com/gyomh/smode-maximize-fix)). Vu seulement avec une barre déplacée en haut (StartAllBack).
 - **Liens affichés "Disconnected"** après création via l'API alors qu'ils fonctionnent réellement
   (vérifié visuellement, la donnée circule). Pas résolu par l'ordre de création. Fix constaté :
   fermer et rouvrir le projet force un rechargement complet qui corrige l'affichage — cache

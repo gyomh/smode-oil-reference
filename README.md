@@ -1616,6 +1616,9 @@ and each one is readable AND modifiable: `dv[i].get()`, `dv[i].set(v)`, `dv[i].g
 Boolean buttons (`.set(True)`). Wiring slots by script is therefore possible. Values and links
 (Parameter bank → parameter) **survive a recompilation** as long as the variable name does not
 change; renaming a variable destroys the old parameter (new object, default value).
+- **Seen otherwise after a code replacement (R15, 30/10/2026)**: `tool.script.sourceCode.set(newSource)` on a Script whose
+  options the user had changed (N Bands = 10) put them back to the defaults written in the new source (64). After replacing
+  the code of a Script that has settings, read them back and set them again through `dynamicVariables`, then `execute.trig()`.
 - Displayed label = variable name: camelCase split into words, **space inserted before a digit**
   (`bone3Rotation` → "Bone 3Rotation", `boneRotation3` → "Bone Rotation 3", `BONE3Rotation` →
   unchanged). Impossible to get "Bone3 Rotation" or a dynamic number on the Script side; the
@@ -2240,6 +2243,12 @@ and writes it back from an external node editor.
 
 ## Known UI bugs
 
+- **Maximised window with the Windows taskbar at the top (R15, 18/10/2026)**: SMODE (a frameless JUCE window) computes its
+  client area as if the taskbar did not exist (client at (0,0), 3200x2080 on a 3200x2000 screen whose work area starts at
+  y = 80): every click lands 65-80 px away from what is drawn, and UI Automation reports the top bar at y = 2 while the
+  window starts at y = 67. A window restored and placed on the work area by hand is fine. Fix outside SMODE: a watcher that
+  restores and resizes the maximised window to the work area
+  ([smode-maximize-fix](https://github.com/gyomh/smode-maximize-fix)). Only seen with a taskbar moved to the top (StartAllBack).
 - **Links shown as "Disconnected"** after creation through the API although they really work
   (checked visually, the data flows). Not solved by the creation order. Fix observed: closing and
   reopening the project forces a full reload that fixes the display — a display cache that is not
