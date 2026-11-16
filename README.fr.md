@@ -44,6 +44,7 @@
 - [Interface web servie par un Script](#interface-web-servie-par-un-script-r15-08102026)
 - [Widget Tool (R15, 09/10/2026)](#widget-tool-r15-09102026)
 - [Export vidéo depuis un script](#export-vidéo-depuis-un-script-r15-11102026)
+- [Découvertes d'un miroir complet de l'arbre (agent du Node Editor)](#découvertes-dun-miroir-complet-de-larbre-agent-du-node-editor-r15-13-16112026)
 - [Bugs UI connus](#bugs-ui-connus)
 - [Instabilités observées](#instabilités-observées)
 - [Le pont MCP (rappel)](#le-pont-mcp-rappel)
@@ -766,6 +767,10 @@ enums qui exigent `.set()`.
   1 = activationRequested (sera actif avec son parent, ex. calques d'une scène inactive), 2 = inactive. Un calque
   éteint ainsi reste éteint quand sa compo parente est activée par un bloc ; une piste de paramètre dont les clés ont
   été effacées s'éteint de la même façon.
+- **Chargement d'un Element** (le Load / Unload des menus de SMODE) : `obj.loading`, un `ActivationState` comme `activation`,
+  `set(False)` décharge (0 → 2 en lecture), `set(True)` recharge. L'œil seul garde l'élément sur le GPU et son Script en marche :
+  pour libérer un outil ou un Script de plugin, fermer l'œil ET décharger ; pour le rallumer, charger d'abord, puis ouvrir l'œil.
+  Vérifié sur un `PythonScriptTool` de `project.tools` (16/11/2026). `del tools[i]` est refusé sur un vecteur Oil : `tools.removeAt(i)`.
 - `scene.clone()` (tout sous-arbre d'Element) donne de nouveaux UUID et remappe les pointeurs faibles de la
   timeline vers les copies : dans le clone détaché `WeakPointer.get()` renvoie `None`, une fois inséré ils
   pointent vers les éléments du clone (blocs, fondus et clés suivent).
@@ -1191,6 +1196,12 @@ et sur un codec hors de sa liste (HAP, HAP Alpha, Hap Q, HapR, ProRes, NotchLC).
   `beatCount`, `tapCount`, `timeValue`. `positionInMeasure.toString()` renvoie un pourcentage (`34.667`).
 - `AudioSpectrumLinkSource` : `extractor.audioChannel`, `extractor.frequencyInterval`, `extractor.amplitudeInterval`, `method`, pour envoyer une bande (kick) vers un paramètre. Câblage vérifié, pas le résultat sur du vrai son.
 - `engine.status.gpuConsumption`, `.cpuConsumption`, `.frame.rate.toString()` (`16.67 ms / 60`) lisent la charge par script. La mesure GPU est bruitée, avec des pics isolés.
+- `engine.status.frame` (`FrameInformation`, pas de `get()` dessus : lire ses champs) : `rate.get()` = images par seconde, `rate.toString()` =
+  `"28.95 ms / 34.55"` (durée mesurée d'une image / cadence), `deltaTime` (s d'une image), `number`, `time`, `synchronous`.
+  `engine.status.systemRamUsage` (octets), `.currentProjectPath`, `.onAir`, `.powerSaveMode`. `engine.status.graphicsProperties`
+  (`GraphicsContextProperties`, pas de `get()`) : `cardName.get()` (`"NVIDIA GeForce RTX 4090 Laptop GPU (1)"`), `renderName`, `vendorName`,
+  `videoRamUsage` (octets ; `.toString()` = `"2.6 / 16.0 GB"` utilisée / totale), `sharedRamUsage`, `vramSwapCount`, `vramErrorCount`,
+  `graphicsCards` (vecteur). Utilisé par le pied de page du Node Editor (16/11/2026).
 
 **Interface web d'un Script** (complète la section dédiée)
 - Modifier `sourceCode` ou la version redémarre le serveur : une page ouverte rate une requête. Ne pas laisser une erreur réseau affichée à vie : l'effacer après quelques secondes, et recharger la page
@@ -1929,6 +1940,65 @@ mais **lancer l'export depuis Python dépend de la licence**.
   tâche** après l'Ok : `task.parameters.settings` (`SceneVideoExportUserSettings`) -> `fileExporter` -> son
   `audioExporter` / `videoExporter` et les valeurs de leurs options (par exemple `profile`, `colorSpace`, `cpuUsage`
   de ProRes).
+
+## Découvertes d'un miroir complet de l'arbre (agent du Node Editor, R15, 13-16/11/2026)
+
+Vérifié en écrivant un agent qui reflète tout l'arbre du projet (chaque calque, modifier et masque, faits à la main compris)
+et le réécrit depuis un éditeur de nodes externe.
+
+**Modifiers, masques, presets**
+- **`Transform2dTextureModifier`** est le « Transform 2D » des menus de modifiers, appliqué par-dessus le placement du calque :
+  `frame.position.x/.y` (fractions du canevas, 0,5 = centre), `frame.rotation` (radians), `frame.scale.scaleFactor.width/height`,
+  `frame.horizontalFlip`, `frame.verticalFlip` ; son œil est `activation`.
+- **`DepthOfFieldV8TextureModifier`** est le Depth of Field des menus ; `DepthOfFieldTextureModifier` est l'ancien (gardé pour
+  ses presets). Même logique que `BlurV8TextureModifier` : quand une classe existe en `V8` et sans, la `V8` est l'entrée actuelle du menu.
+- **Les modifiers n'ont pas de `clone()`** (les éléments si) : pour déplacer un modifier vers un autre calque, en construire un
+  neuf avec les réglages lus sur l'ancien. Son œil (`activation`) et ses `masks` ne suivent pas tout seuls : les lire avant, les
+  réécrire après.
+- **Image d'un masque de calque** (`TextureLayerTextureMask.generator`) : `ParentInputTextureGenerator` = le « Parent Input » de
+  l'interface (l'image du calque lui-même), ou un `ImageFileTextureGenerator`, un générateur de texture, un
+  `ReferenceTextureGenerator` vers un élément partagé ; `generator.modifiers` porte les modifiers entre cette image et le masque.
+  Écrire un masque déjà là **en place** (même classe : ses réglages ; autre forme ou image : seulement son `shape` / `generator`) :
+  un masque affiché dans le viewer de masque de SMODE y reste, alors que remplacer l'objet renvoie le viewer sur le Show.
+- **Les presets de SMODE sont des fichiers texte** : `<Smode>\packs\Standard Pack\Presets\<Bibliothèque>.presets\<Classe>.preset`
+  (bibliothèques `Default`, `Advanced Presets`), texte Oil avec une racine `presets` = liste de `{name, state}`. Le sélecteur
+  `preset` d'un modifier (`libraryName`, `presetName`) ne fait qu'enregistrer le choix : **poser `presetName` n'applique pas le
+  preset**. L'appliquer soi-même : d'abord les valeurs d'un `Oil.createObject(cls)` neuf (défauts de SMODE), puis celles de l'état
+  (sauter `label`, `activation`, `masks`, `intensity`, `preset`), puis écrire le sélecteur pour que l'interface affiche le nom.
+- Une forme d'un `GroupShapeGenerator` (ses `generators`) : `merger` (énumération, comment elle se fond avec les formes du
+  dessous) et `mergeOpacity` ; des modifiers `FillColor` / `EdgeColor` propres à la forme prennent le pas sur les couleurs du groupe.
+
+**Renderers, solo, objets cachés**
+- **SMODE rallume un renderer quelques images après l'entrée de son calque dans l'arbre** (insertion, ou clone posé ailleurs) :
+  un `renderer.activation.set(False)` écrit dans le même appel est défait. Le réécrire 2 et 8 images plus tard.
+- **Objet auxiliaire caché** : un objet 3D gardé seulement pour servir un autre calque (collision, émetteur) se cache avec son
+  `renderer.activation` fermé et son `activation` à lui ouvert. Un calque éteint par son œil n'entre pas en collision avec les
+  particules ; une référence vers lui émet depuis lui quand même. Le renderer revient quand un réglage le reconstruit : réécrire l'état.
+- **Solo** (la flèche verte de l'interface) : `element.solo` (`get()` / `set(True)`), sur l'élément et sur chaque parent jusqu'au
+  Show ; remettre chaque valeur précédente pour sortir du solo. `particlesCount` d'un calque de particules hors du rendu (solo
+  ailleurs, œil fermé) reste figé.
+- **« No Triangles information in geometry » sur un calque de particules** après un solo ailleurs : le sampler de position de
+  l'émetteur (`generator.positions`) reste en erreur même quand le calque est de nouveau rendu. Remède : un sampler neuf de la
+  même classe (`gen.positions = Oil.createObject(gen.positions.getOilClassName())`) et ses réglages de nouveau (ce que fait un
+  changement de forme à la main). `liveStatus.toString()` est tronqué, `liveStatus.success.get()` donne le message entier.
+- Un `PythonScriptTool` va dans les `tools` d'une Scene, d'une Compo (`compo.tools`), d'un `GroupLayer` ou d'un `Group3dLayer` :
+  un Script peut vivre à chaque niveau de l'arbre ; `project.tools` porte ceux du projet.
+
+**Particules : les règles au complet (R15, 15-16/11/2026)**
+- Conditions : `AgeParticleCondition` (`threshold` 0..1 de la vie), `ColorParticleCondition` (`color`, `tolerance`),
+  `CollisionParticleCondition` (`collidables.insert(layer)`, un calque 3D), `RandomParticleCondition` (`eventsPerParticle`),
+  `CompositeParticleCondition` (`conditionA`, `conditionB`, `operation`), `NullParticleCondition` (toujours vraie). Pas de
+  condition de groupe ni de masque : le groupe est le `groupFilter` de la règle (`enabled`, `value`).
+- Actions : `AgeParticleAction` (`value`, `incremental` : False pose l'âge, True l'avance ou le recule), `BounceParticleAction`
+  (`restitution`, `restitutionRandom`, `friction`, `traversalChance`, `spread` en radians), `ChangeGroupParticleAction` (`value`,
+  `incremental`), `ColorizeParticleAction` (`color`), `EmitParticleAction` (`numParticles`, `lifetime`, `lifetimeRandom`, `speed`,
+  `speedRandom`, `inheritParticleSpeed`, `directions`, sous-`actions`), `KillParticleAction`.
+- **« Increase Group by 1 » dans un `EmitParticleAction` a envoyé les nouvelles particules deux groupes plus haut** (testé le
+  15/11/2026 : une règle filtrée sur le groupe 3 les a attrapées, pas une sur le groupe 2). Leur donner un groupe absolu
+  (`incremental` False, `value` n).
+- Déplacer un émetteur, c'est déplacer son sampler, pas le calque : `PointPositionSampler.placement.position`,
+  `PlanePositionSampler.placement.position`, `LinePositionSampler.segment.begin` / `.end`, `SpherePositionSampler.sphere.center` ;
+  un `BoxPositionSampler` n'a pas de position propre (déplacer le calque).
 
 ## Bugs UI connus
 

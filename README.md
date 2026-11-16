@@ -46,6 +46,7 @@
 - [Web interface served by a Script](#web-interface-served-by-a-script-r15-08102026)
 - [Widget Tool (R15, 09/10/2026)](#widget-tool-r15-09102026)
 - [Video export from a script](#video-export-from-a-script-r15-11102026)
+- [Findings of a full mirror of the tree (Node Editor agent)](#findings-of-a-full-mirror-of-the-tree-node-editor-agent-r15-13-16112026)
 - [Known UI bugs](#known-ui-bugs)
 - [Observed instabilities](#observed-instabilities)
 - [The MCP bridge (reminder)](#the-mcp-bridge-reminder)
@@ -931,6 +932,10 @@ script.project.masterScene.layers.append(scene)   # last append
   1 = activationRequested (will be active with its parent, e.g. layers of an inactive scene), 2 = inactive. A layer
   switched off this way stays off when its parent compo is activated by a block; a parameter track whose keys were
   cleared can be switched off the same way.
+- **Loading of an Element** (the Load / Unload of SMODE's menus): `obj.loading`, an `ActivationState` like `activation`,
+  `set(False)` unloads (0 → 2 on read), `set(True)` loads again. The eye alone keeps the element on the GPU and its Script
+  running: to free a tool or a plugin Script, close the eye AND unload; to switch it back on, load first, then open the eye.
+  Verified on a `PythonScriptTool` of `project.tools` (16/11/2026). `del tools[i]` is refused on an Oil vector: `tools.removeAt(i)`.
 - `scene.clone()` (any Element subtree) gives new UUIDs and remaps the timeline's weak pointers to the copies: in
   the detached clone `WeakPointer.get()` returns `None`, once inserted they resolve to the clone's own elements
   (blocks, fades and keys come along).
@@ -1428,6 +1433,12 @@ needs `video.transport.player = Oil.createObject("StandalonePlayer")` then `play
   `beatCount`, `tapCount`, `timeValue`. `positionInMeasure.toString()` returns a percentage (`34.667`).
 - `AudioSpectrumLinkSource`: `extractor.audioChannel`, `extractor.frequencyInterval`, `extractor.amplitudeInterval`, `method`, to send a band (kick) to a parameter. Wiring verified, not the result on real sound.
 - `engine.status.gpuConsumption`, `.cpuConsumption`, `.frame.rate.toString()` (`16.67 ms / 60`) read the load by script. The GPU reading is noisy, with isolated spikes.
+- `engine.status.frame` (`FrameInformation`, no `get()` on it: read its fields): `rate.get()` = images per second, `rate.toString()` = `"28.95 ms / 34.55"`
+  (measured frame time / rate), `deltaTime` (s of one frame), `number`, `time`, `synchronous`. `engine.status.systemRamUsage` (bytes),
+  `.currentProjectPath`, `.onAir`, `.powerSaveMode`. `engine.status.graphicsProperties` (`GraphicsContextProperties`, no `get()`):
+  `cardName.get()` (`"NVIDIA GeForce RTX 4090 Laptop GPU (1)"`), `renderName`, `vendorName`, `videoRamUsage` (bytes; `.toString()` =
+  `"2.6 / 16.0 GB"` used / total), `sharedRamUsage`, `vramSwapCount`, `vramErrorCount`, `graphicsCards` (vector). Used by the Node
+  Editor's footer (16/11/2026).
 
 **Web interface of a Script** (adds to the dedicated section)
 - Changing `sourceCode` or the version restarts the server: an open page misses a request. Do not leave a network error on screen forever: clear it after a few seconds, and reload the page
@@ -2169,6 +2180,63 @@ but **launching the export from Python depends on the licence**.
   (`OfflineRenderingContext`), `previousOnAir`. **The settings of an export started from the window are readable on
   its task** after the Ok: `task.parameters.settings` (`SceneVideoExportUserSettings`) -> `fileExporter` -> its
   `audioExporter` / `videoExporter` and their option values (e.g. ProRes `profile`, `colorSpace`, `cpuUsage`).
+
+## Findings of a full mirror of the tree (Node Editor agent, R15, 13-16/11/2026)
+
+Verified while writing an agent that mirrors the whole project tree (every layer, modifier and mask, hand-made ones too)
+and writes it back from an external node editor.
+
+**Modifiers, masks, presets**
+- **`Transform2dTextureModifier`** is the "Transform 2D" of the modifier menus, applied on top of the layer's own placement:
+  `frame.position.x/.y` (canvas fractions, 0.5 = centre), `frame.rotation` (radians), `frame.scale.scaleFactor.width/height`,
+  `frame.horizontalFlip`, `frame.verticalFlip`; its eye is `activation`.
+- **`DepthOfFieldV8TextureModifier`** is the Depth of Field of the menus; `DepthOfFieldTextureModifier` is the legacy one (kept for
+  its presets). Same pattern as `BlurV8TextureModifier`: when a class exists in `V8` and without, the `V8` one is the current menu entry.
+- **Modifiers have no `clone()`** (elements do): to move a modifier to another layer, build a new one with the settings read
+  from the old. Its eye (`activation`) and its `masks` do not follow by themselves: read them before, write them after.
+- **Layer mask image** (`TextureLayerTextureMask.generator`): `ParentInputTextureGenerator` = the "Parent Input" of the UI (the
+  layer's own picture), or an `ImageFileTextureGenerator`, a texture generator, a `ReferenceTextureGenerator` to a shared
+  element; `generator.modifiers` holds the modifiers between that image and the mask. Write a mask that is already there **in
+  place** (same class: its settings; another shape or image: only its `shape` / `generator`): a mask shown in SMODE's mask viewer
+  stays shown, while replacing the object sends the viewer back to the Show.
+- **SMODE's presets are text files**: `<Smode>\packs\Standard Pack\Presets\<Library>.presets\<Class>.preset` (libraries
+  `Default`, `Advanced Presets`), Oil text with a root `presets` = list of `{name, state}`. A modifier's `preset` selector
+  (`libraryName`, `presetName`) only records the choice: **setting `presetName` does not apply the preset**. Apply it yourself:
+  the values of a fresh `Oil.createObject(cls)` first (SMODE's defaults), then the state's values (skip `label`, `activation`,
+  `masks`, `intensity`, `preset`), then write the selector so the UI shows the name.
+- A shape of a `GroupShapeGenerator` (its `generators`): `merger` (enum, how it merges with the shapes under it) and
+  `mergeOpacity`; a shape's own `FillColor` / `EdgeColor` modifiers override the group's colours.
+
+**Renderers, solo, hidden helpers**
+- **SMODE switches a renderer back on a few frames after its layer enters the tree** (insertion, or a clone put in another
+  place): a `renderer.activation.set(False)` written in the same call is undone. Write it again 2 and 8 frames later.
+- **Hidden helper object**: a 3D object kept only to serve another layer (a collider, an emitter) is hidden with its
+  `renderer.activation` off and its own `activation` on. A layer switched off by its eye does not collide with particles; a
+  reference to it emits from it either way. The renderer comes back after a setting rebuilds it: write the state again.
+- **Solo** (the green arrow of the UI): `element.solo` (`get()` / `set(True)`), on the element and on each parent up to the
+  Show; put every previous value back to leave solo. `particlesCount` of a particle layer left out of the render (solo
+  elsewhere, eye closed) stays frozen.
+- **"No Triangles information in geometry" on a particle layer** after a solo elsewhere: the emitter's position sampler
+  (`generator.positions`) stays in error even when the layer is rendered again. Fix: a new sampler of the same class
+  (`gen.positions = Oil.createObject(gen.positions.getOilClassName())`) and its settings again (what a change of shape does by
+  hand). `liveStatus.toString()` is truncated, `liveStatus.success.get()` holds the whole message.
+- `PythonScriptTool` goes in the `tools` of a Scene, of a Compo (`compo.tools`), of a `GroupLayer` or a `Group3dLayer`: a
+  Script can live at every level of the tree; `project.tools` holds the project-level ones.
+
+**Particles: rules in full (R15, 15-16/11/2026)**
+- Conditions: `AgeParticleCondition` (`threshold` 0..1 of the life), `ColorParticleCondition` (`color`, `tolerance`),
+  `CollisionParticleCondition` (`collidables.insert(layer)`, a 3D layer), `RandomParticleCondition` (`eventsPerParticle`),
+  `CompositeParticleCondition` (`conditionA`, `conditionB`, `operation`), `NullParticleCondition` (always true). There is no
+  group or mask condition: the group is the rule's `groupFilter` (`enabled`, `value`).
+- Actions: `AgeParticleAction` (`value`, `incremental`: False sets the age, True moves it on or back), `BounceParticleAction`
+  (`restitution`, `restitutionRandom`, `friction`, `traversalChance`, `spread` in radians), `ChangeGroupParticleAction` (`value`,
+  `incremental`), `ColorizeParticleAction` (`color`), `EmitParticleAction` (`numParticles`, `lifetime`, `lifetimeRandom`, `speed`,
+  `speedRandom`, `inheritParticleSpeed`, `directions`, sub-`actions`), `KillParticleAction`.
+- **"Increase Group by 1" inside an `EmitParticleAction` sent the new particles two groups up** (tested 15/11/2026: a rule
+  filtered on group 3 caught them, not one on group 2). Give them an absolute group instead (`incremental` False, `value` n).
+- Moving an emitter means moving its sampler, not the layer: `PointPositionSampler.placement.position`,
+  `PlanePositionSampler.placement.position`, `LinePositionSampler.segment.begin` / `.end`, `SpherePositionSampler.sphere.center`;
+  a `BoxPositionSampler` has no position of its own (move the layer).
 
 ## Known UI bugs
 
