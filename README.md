@@ -21,6 +21,7 @@
 - [3D lights (R15, 07/10/2026)](#3d-lights-r15-07102026)
 - [Lock and activation (ActivationState)](#lock-and-activation-activationstate)
 - [Shared materials, references, depth (R15)](#shared-materials-references-depth-r15)
+- [Surface components, a bank in the Show, shared elements (R15, 2026-11-16)](#surface-components-a-bank-in-the-show-shared-elements-r15-2026-11-16)
 - [Compo camera (R15)](#compo-camera-r15)
 - [Text (TextLayer)](#text-textlayer)
 - [Parameter banks linked to a Script (R15)](#parameter-banks-linked-to-a-script-r15)
@@ -616,6 +617,42 @@ rather than fixing the existing objects in place.
   `PlaneGeometryGenerator` with a mirrored-repeat normal map got darker/brighter along its length (ground luma 45 -> 67 over
   25 m of slide, then a jump when the loop restarted) although the albedo texture was periodic. Found by switching layers
   off one by one and measuring the mean luma of image zones either side of the loop point; `normalLevel` 0 removed it.
+
+## Surface components, a bank in the Show, shared elements (R15, 2026-11-16)
+
+- **The components of a `SurfaceGeometryRenderer`** (`components`, after the `DiffuseSurfaceComponent` that is always
+  there), as the UI lists them, with their own variables (all have `level` and `masks`):
+
+  | Class | Variables | Note |
+  |---|---|---|
+  | `DiffuseSurfaceComponent` | `map`, `scale`, `wrapModes`, `useTextureOpacity`, `blendingMode` | the base texture |
+  | `SpecularSurfaceComponent` | `map`, `scale`, `wrapModes`, `shininess` (80) | highlights of the lights |
+  | `AlphaSurfaceComponent` | `map`, `scale`, `wrapModes`, `colorSelector` (`ChannelColorSelector`) | transparency from a texture |
+  | `EnvironmentSurfaceComponent` | `map` (`DirectionalMapGenerator`), `blendingMode`, `reflectance`, `useEnvironmentOpacity`, `chromaticDispersion` | environment reflection |
+  | `HeightBumpSurfaceComponent` | `map`, `scale`, `wrapModes`, `intensity` (1), `colorSelector` | bump from a height map |
+  | `NormalBumpSurfaceComponent` | `map`, `scale`, `wrapModes`, `intensity` (0.5), `rgbInversion` | bump from a normal map |
+  | `CheckerBoard3dSurfaceComponent` | `cubeSize` (0.1), `positionOffset`, `orientationOffset` | checker in space, no map |
+  | `VertexInfoColorSurfaceComponent` | `blendingMode`, `colorMode` | vertex colours, no map |
+
+  A component's `map` is any `TextureGenerator` (`ImageFileTextureGenerator`, `UniformTextureGenerator`, a generator, a
+  `ReferenceTextureGenerator` to a shared element); `map = None` is accepted. A new `SurfaceGeometryRenderer` is born with
+  Diffuse + Specular: `components.removeAt(1)` for a bare surface.
+- **`EnvironmentSurfaceComponent.map`** is a `DirectionalMapGenerator`: a `CubeMapFileDirectionalMapGenerator` (empty) by
+  default; subclasses found: `EquirectangularDirectionalMapGenerator` (`generator` = a `TextureGenerator`, the panoramic
+  image; `orientation`, `mirror`, `cylindricalDistort`, `topSmoothing`, `bottomSmoothing`), `SkyDirectionalMapGenerator`,
+  `UniformDirectionalMapGenerator`, `SphereDirectionalMapGenerator`. `reflectance`: `PureReflectionReflectanceModel` by
+  default, `FresnelReflectanceModel`, `SimpleReflectanceModel`.
+- **The Show (master Scene) accepts a `MaterialBank` in its `tools`**, next to the `SharedElement`s: a bank material put
+  there can be referenced by any `GeometryLayer` of the project (`ReferenceGeometryLayerUser`, `location` 1 +
+  `directPointer`, see above). `bank.materials` also takes a `PBRSurfaceGeometryRenderer`. Removing the material from the
+  bank leaves the references with `target.get() = None` (invisible layer): make them again or point them elsewhere.
+- **A Compo put into a `SharedElement(TextureGenerator)`** (content cloned into the Show's `tools`) has no parent left to
+  inherit its resolution from: with `rasterizer.resolution.preset` = 41 (inherited) SMODE flags the layer "Empty
+  resolution" (red cross). Give the clone an explicit resolution (preset 40, `linked` False, `width`/`height` copied from
+  the original) before adding it.
+- **Replacing the code of a Script in place**: `tool.script.sourceCode.set(text)` on the `PythonScriptTool` (the
+  `PythonScript` lives in `tool.script`, not on the tool itself); in "At Every Update" mode the new code runs on the next
+  frame, the module globals are lost except what the script keeps by itself.
 
 ## Compo camera (R15)
 

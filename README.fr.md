@@ -21,6 +21,7 @@
 - [Lumières 3D](#lumières-3d-r15-07102026)
 - [Verrou et activation (ActivationState)](#verrou-et-activation-activationstate)
 - [Matériaux partagés, références, profondeur](#matériaux-partagés-références-profondeur-r15)
+- [Composants d'une Surface, banque dans le Show, éléments partagés](#composants-dune-surface-banque-dans-le-show-éléments-partagés-r15-16112026)
 - [Caméra de la Compo](#caméra-de-la-compo-r15)
 - [Texte (TextLayer)](#texte-textlayer)
 - [Parameter banks liées à un Script](#parameter-banks-liées-à-un-script-r15)
@@ -495,6 +496,42 @@ plutôt que corriger les objets existants en place.
 - Création d'un matériau par script (aucun appel UI) : voir `make_icon_material` dans les scripts de [smode-ik-rig](https://github.com/gyomh/smode-ik-rig)
   (`GroupShapeGenerator.shapes` ← `LineShapeGenerator` avec `segment.begin/end` en coordonnées 0-1 ;
   `DefaultShapeRenderer` : `fill.enabled`, `stroke.enabled/.color/.thickness` en pixels de la texture).
+
+## Composants d'une Surface, banque dans le Show, éléments partagés (R15, 16/11/2026)
+
+- **Les composants d'un `SurfaceGeometryRenderer`** (`components`, après le `DiffuseSurfaceComponent` toujours
+  présent), tels que l'interface les propose, avec leurs variables propres (toutes ont `level` et `masks`) :
+
+  | Classe | Variables | Note |
+  |---|---|---|
+  | `DiffuseSurfaceComponent` | `map`, `scale`, `wrapModes`, `useTextureOpacity`, `blendingMode` | la texture de base |
+  | `SpecularSurfaceComponent` | `map`, `scale`, `wrapModes`, `shininess` (80) | reflets des lumières |
+  | `AlphaSurfaceComponent` | `map`, `scale`, `wrapModes`, `colorSelector` (`ChannelColorSelector`) | transparence par texture |
+  | `EnvironmentSurfaceComponent` | `map` (`DirectionalMapGenerator`), `blendingMode`, `reflectance`, `useEnvironmentOpacity`, `chromaticDispersion` | reflet d'environnement |
+  | `HeightBumpSurfaceComponent` | `map`, `scale`, `wrapModes`, `intensity` (1), `colorSelector` | relief par hauteur |
+  | `NormalBumpSurfaceComponent` | `map`, `scale`, `wrapModes`, `intensity` (0.5), `rgbInversion` | relief par normales |
+  | `CheckerBoard3dSurfaceComponent` | `cubeSize` (0.1), `positionOffset`, `orientationOffset` | damier dans l'espace, sans map |
+  | `VertexInfoColorSurfaceComponent` | `blendingMode`, `colorMode` | couleur des sommets, sans map |
+
+  `map` d'un composant = n'importe quel `TextureGenerator` (`ImageFileTextureGenerator`, `UniformTextureGenerator`,
+  un générateur, un `ReferenceTextureGenerator` vers un élément partagé) ; `map = None` est accepté. Un nouveau
+  `SurfaceGeometryRenderer` naît avec Diffuse + Specular : `components.removeAt(1)` pour une surface nue.
+- **`EnvironmentSurfaceComponent.map`** est un `DirectionalMapGenerator` : par défaut un `CubeMapFileDirectionalMapGenerator`
+  (vide) ; sous-classes trouvées : `EquirectangularDirectionalMapGenerator` (`generator` = un `TextureGenerator`, l'image
+  panoramique ; `orientation`, `mirror`, `cylindricalDistort`, `topSmoothing`, `bottomSmoothing`), `SkyDirectionalMapGenerator`,
+  `UniformDirectionalMapGenerator`, `SphereDirectionalMapGenerator`. `reflectance` : `PureReflectionReflectanceModel` par
+  défaut, `FresnelReflectanceModel`, `SimpleReflectanceModel`.
+- **Le Show (master Scene) accepte un `MaterialBank` dans ses `tools`**, à côté des `SharedElement` : un matériau de banque
+  qui y est mis est référençable par n'importe quel `GeometryLayer` du projet (`ReferenceGeometryLayerUser`, `location` 1 +
+  `directPointer`, voir plus haut). `bank.materials` accepte aussi un `PBRSurfaceGeometryRenderer`. Retirer le matériau de la
+  banque laisse les références à `target.get() = None` (calque invisible) : les recréer ou les re-pointer.
+- **Une Compo mise dans un `SharedElement(TextureGenerator)`** (contenu cloné dans les `tools` du Show) n'a plus de parent
+  dont hériter la résolution : avec `rasterizer.resolution.preset` = 41 (héritée) SMODE marque le calque « Empty resolution »
+  (croix rouge). Donner au clone une résolution explicite (preset 40, `linked` False, `width`/`height` copiés de l'original)
+  avant de l'ajouter.
+- **Remplacer le code d'un Script en place** : `tool.script.sourceCode.set(texte)` sur le `PythonScriptTool` (le
+  `PythonScript` est dans `tool.script`, pas directement sur l'outil) ; en mode « At Every Update » le nouveau code tourne au
+  frame suivant, les globals du module sont perdus sauf ce que le script garde lui-même.
 
 ## Caméra de la Compo (R15)
 
