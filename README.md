@@ -1180,6 +1180,13 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
 - **Media Directory path** works for FBX and images: `"Smode Files/Old TV retro/old_tv_v02_textured.fbx"` (copy the files into a
   sub-folder of the Media Directory, folder list in `%APPDATA%\Smode Compose\configurations\Data_15_9.configuration`); `reload.trig()`
   after a fresh copy. Portable, unlike an absolute `G:\...` path.
+- **A path can also come back WITHOUT the Media Directory name**: an absolute path given to an FBX loader and an image map
+  was read back after saving the project as `"Old TV retro/old_tv_v02_textured.fbx"` (the file is in
+  `<Smode Files>\Old TV retro\`). To find the file on disk from `file.path.get()`, try `<name>/rest` against the Media
+  Directory names, then the whole path inside each Media Directory folder; or ask SMODE: `ref.file.get().nativeFile.get()`
+  gives the absolute path.
+- **Emptying a 3D file path does not unload it**: `Scene3dFileGeometryGenerator.file.path.set("")` leaves the geometry already
+  loaded on screen. Give the layer a new, empty loader (`layer.generator = Oil.createObject("Scene3dFileGeometryGenerator")`).
 - **No PBR when only the albedo matters**: a plain `SurfaceGeometryRenderer` with the Diffuse component only (`components.removeAt(1)`
   drops the Specular one). **Emissive-only surface** = that material with `autoIlluminate.set(1.0)` (it is a PERCENTAGE: 1.0 = fully
   self-lit, the surface ignores the lights). `PBRSurfaceGeometryRenderer` has `albedo` / `roughness` / `metallic` / `emissive` / `normal`

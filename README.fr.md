@@ -949,6 +949,13 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
 - **Chemin Media Directory** valable pour le FBX et les images : `"Smode Files/Old TV retro/old_tv_v02_textured.fbx"` (copier les fichiers
   dans un sous-dossier du Media Directory ; liste des dossiers dans `%APPDATA%\Smode Compose\configurations\Data_15_9.configuration`) ;
   `reload.trig()` après une copie fraîche. Portable, contrairement à un chemin absolu `G:\...`.
+- **Un chemin peut aussi revenir SANS le nom du Media Directory** : un chemin absolu donné à un chargeur FBX et à une image a été
+  relu après la sauvegarde du projet sous la forme `"Old TV retro/old_tv_v02_textured.fbx"` (le fichier est dans
+  `<Smode Files>\Old TV retro\`). Pour retrouver le fichier sur disque depuis `file.path.get()` : essayer `<nom>/reste` avec
+  les noms des Media Directories, puis le chemin entier dans le dossier de chaque Media Directory ; ou demander à SMODE :
+  `ref.file.get().nativeFile.get()` donne le chemin absolu.
+- **Vider le chemin d'un fichier 3D ne le décharge pas** : `Scene3dFileGeometryGenerator.file.path.set("")` laisse à l'écran la
+  géométrie déjà chargée. Donner au calque un chargeur neuf, vide (`layer.generator = Oil.createObject("Scene3dFileGeometryGenerator")`).
 - **Pas de PBR quand seul l'albédo compte** : un `SurfaceGeometryRenderer` simple avec le seul composant Diffuse (`components.removeAt(1)`
   retire le Specular). **Surface émissive seule** = ce matériau avec `autoIlluminate.set(1.0)` (c'est un POURCENTAGE : 1.0 = totalement
   auto-éclairé, la surface ignore les lumières). `PBRSurfaceGeometryRenderer` a `albedo` / `roughness` / `metallic` / `emissive` / `normal`
