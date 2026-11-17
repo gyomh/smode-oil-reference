@@ -1412,6 +1412,9 @@ Hap Q, HapR, ProRes, NotchLC). `qtrle` triggers this last warning, with no probl
 
 **Synchronised videos**: `reset.trig()` on every `video.transport` then `play.trig()` on every one, in the same execution: 4 streams with 0 frame of gap on each pair. A video created by script
 needs `video.transport.player = Oil.createObject("StandalonePlayer")` then `player.parameters.looping.set(True)`.
+A `StandalonePlayer` made by script has `parameters.launchMode` **manual** (shown blue in SMODE): the video may sit
+still (`ready`) and whatever reads it stutters until it is restarted by hand. Set
+`player.parameters.launchMode.set(1)` (`restartWithActivation`, as a player made in the interface): it starts by itself.
 
 **`ParameterBank` states** (`ParametersState`, tested on `Boolean`, `Percentage`, `Real`, `PositiveReal`, `CustomEnumeration`)
 - `state.apply.trig()`, `bank.applyNext.trig()` and `bank.currentStateIndex.set(i)` apply a state and drive the linked targets. The official sample is

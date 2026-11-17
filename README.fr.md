@@ -1179,6 +1179,9 @@ et sur un codec hors de sa liste (HAP, HAP Alpha, Hap Q, HapR, ProRes, NotchLC).
 
 **Vidéos synchronisées** : `reset.trig()` sur tous les `video.transport` puis `play.trig()` sur tous, dans la même exécution : 4 flux à 0 image d'écart par paire. Un
 `video.transport.player = Oil.createObject("StandalonePlayer")` puis `player.parameters.looping.set(True)` est nécessaire pour une vidéo créée par script.
+Un `StandalonePlayer` créé par script a `parameters.launchMode` en **manual** (affiché en bleu dans SMODE) : la vidéo peut
+rester immobile (`ready`) et ce qui la lit saccade jusqu'à une relance à la main. Mettre
+`player.parameters.launchMode.set(1)` (`restartWithActivation`, comme un player créé dans l'interface) : il démarre seul.
 
 **États d'une `ParameterBank`** (`ParametersState`, testés sur `Boolean`, `Percentage`, `Real`, `PositiveReal`, `CustomEnumeration`)
 - `state.apply.trig()`, `bank.applyNext.trig()` et `bank.currentStateIndex.set(i)` appliquent un état et pilotent les cibles liées. L'exemple officiel est
