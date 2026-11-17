@@ -1480,6 +1480,8 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
 - **Path of the document**: walk up from the Script (`tool.parentElement`, then `.parent` for a Compo or a pointer) to the object of class
   `Document(TextureGenerator)`. `doc.nativeFile.toString()` gives the absolute path (`...\test datamosh2\test datamosh2.compo`), an empty string
   while it has never been saved; `doc.hasUnsavedChanges`; its parent is the `Unsaved Documents` or `Files` vector.
+  In a project, the walk is Script → `Compo` → `TextureLayer` → `Scene` → `Project` → `OwnedPointer(Project)` →
+  `ProjectDocument`, whose `nativeFile.toString()` is the `.project` path (`Project` itself has no `nativeFile`).
 - **A deleted object, or one from a closed document**: touching it sometimes raises `RuntimeError('Access violation - no RTTI data!')`, but reading
   on every frame a `Parameter` just removed from its bank crashed SMODE (no Python exception). Never keep an Oil object cached without checking
   it still exists (here: read the bank again as soon as its parameter count changes).

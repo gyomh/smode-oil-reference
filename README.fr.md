@@ -1247,6 +1247,8 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
 - **Chemin du document** : remonter depuis le Script (`tool.parentElement`, puis `.parent` pour une Compo ou un pointeur) jusqu'à l'objet de classe
   `Document(TextureGenerator)`. `doc.nativeFile.toString()` donne le chemin absolu (`...\test datamosh2\test datamosh2.compo`), une chaîne vide tant
   qu'il n'a jamais été enregistré ; `doc.hasUnsavedChanges` ; son parent est le vecteur `Unsaved Documents` ou `Files`.
+  Dans un projet, la remontée est Script → `Compo` → `TextureLayer` → `Scene` → `Project` → `OwnedPointer(Project)` →
+  `ProjectDocument`, dont `nativeFile.toString()` est le chemin du `.project` (`Project` lui-même n'a pas de `nativeFile`).
 - **Un objet supprimé ou d'un document fermé** : y accéder lève parfois `RuntimeError('Access violation - no RTTI data!')`, mais relire à chaque
   image un `Parameter` qu'on vient de retirer de sa banque a fait planter SMODE (pas d'exception Python). Ne jamais garder en cache un objet Oil
   sans vérifier qu'il existe encore (ici : relire la banque dès que son nombre de paramètres change).
