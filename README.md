@@ -1483,6 +1483,17 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   a state that has stopped ticking, and **try the bind again** every second instead of once (a state that stopped less than a few
   seconds ago cannot be told from a live one).
   `tool.getUniqueIdentifier()` on a `PythonScriptTool` raises `TypeError` (`juce::Uuid` cannot be converted).
+- **Identifying an element across sessions (17/11/2026)**: `getUniqueIdentifier()` raises the same `TypeError` (`juce::Uuid`) on
+  every Element tried (`Scene`, `TextureLayer`, `SharedElement(TextureGenerator)`, `PythonScriptTool`), and an element has no free
+  text field to write a tag into (variables of a `TextureLayer`: `label`, `colorLabel`, `liveStatus`, `loading`, `activation`, `solo`,
+  `editable`, `preset`, `frameProfile*`, `tools`, `worldMatrix`, `generator`, `renderer`; a `SharedElement` has `runOnServer`, `expose`,
+  `content` instead of the last ones). What works in memory: `Oil.createObject("OwnedVector(WeakPointer(Element))")`,
+  `append(Oil.createObject("WeakPointer(Element)"))`, `v[k].set(obj)`: accepts layers, Shared Elements, Script tools and texture modifiers
+  (`IsfFileTextureModifier`, `BlurV8TextureModifier`), `v[k].get() is obj` is true. Declared as a parameter of a Script, such a list is
+  saved with the project: **verified across a save + reopen** (17/11/2026) for a `SharedElement`, a `TextureLayer` and a
+  `BlurV8TextureModifier` nested 9 levels down (each pointer resolves to the live element of the reopened project, its parents up to
+  the Show). The way to find the same elements again after a restart, even renamed or moved (the list lives only once the project
+  is saved). Remove the Script of such a test with `project.tools.removeAt(i)`.
 - **SMODE only runs the Scripts of the document in front**: a bridge left in a compo in the background stops answering (504).
 - A Script dragged into the tools starts with `launchMode` `manual`. After `sourceCode.set`, its `dynamicVariables` are filled only once the call
   has returned (a `KeyError` on their names in the same call).

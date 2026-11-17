@@ -1250,6 +1250,17 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   port d'un état qui ne tourne plus, et **réessayer le bind** chaque seconde au lieu d'une fois (un état arrêté depuis quelques secondes
   ne se distingue pas d'un état vivant).
   `tool.getUniqueIdentifier()` sur un `PythonScriptTool` lève `TypeError` (`juce::Uuid` non convertible).
+- **Identifier un élément d'une session à l'autre (17/11/2026)** : `getUniqueIdentifier()` lève la même `TypeError` (`juce::Uuid`) sur
+  tous les Element essayés (`Scene`, `TextureLayer`, `SharedElement(TextureGenerator)`, `PythonScriptTool`), et un élément n'a aucun
+  champ texte libre où écrire une étiquette (variables d'un `TextureLayer` : `label`, `colorLabel`, `liveStatus`, `loading`, `activation`,
+  `solo`, `editable`, `preset`, `frameProfile*`, `tools`, `worldMatrix`, `generator`, `renderer` ; un `SharedElement` a `runOnServer`,
+  `expose`, `content` à la place des derniers). Ce qui marche en mémoire : `Oil.createObject("OwnedVector(WeakPointer(Element))")`,
+  `append(Oil.createObject("WeakPointer(Element)"))`, `v[k].set(obj)` : accepte calques, Shared Elements, Scripts et modifiers de
+  texture (`IsfFileTextureModifier`, `BlurV8TextureModifier`), `v[k].get() is obj` est vrai. Déclarée comme paramètre d'un Script, une
+  telle liste est enregistrée avec le projet : **vérifié après sauvegarde + réouverture** (17/11/2026) pour un `SharedElement`, un
+  `TextureLayer` et un `BlurV8TextureModifier` rangé 9 niveaux plus bas (chaque pointeur désigne l'élément vivant du projet rouvert,
+  ses parents jusqu'à la Show). Le moyen de retrouver les mêmes éléments après un redémarrage, même renommés ou déplacés (la liste
+  n'existe qu'une fois le projet sauvegardé). Retirer le Script d'un tel test : `project.tools.removeAt(i)`.
 - **SMODE n'exécute que les Scripts du document au premier plan** : un pont resté dans une compo en arrière-plan ne répond plus (504).
 - Un Script glissé dans les outils démarre en `launchMode` `manual`. Après `sourceCode.set`, ses `dynamicVariables` ne sont remplies qu'au retour
   de l'appel (un `KeyError` sur leur nom dans le même appel).
