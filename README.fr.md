@@ -946,6 +946,39 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   `Scene3dFile.meshes` / `.vertices` sont corrects). Une valeur vide s'affiche `<ALL>` (tout le fichier). Les choix valides ne sont pas
   listés par l'API (`StringWithChoices` n'a que `get` / `set`) ; `Scene3dFile.importAsGroup3dLayer` demande deux arguments
   (`group3dImporterClass`, `targetParent`) que nous n'avons pas trouvés. Un nœud dont le parent est un Empty exige le parent dans le chemin.
+- **`importAsGroup3dLayer` n'est pas appelable depuis Python (17/11/2026)** : la méthode est un objet Oil aux variables `self`
+  (ObjectAddress), `group3dImporterClass` (**ClassObject**) et `targetParent` (ObjectAddress). Les classes d'import (chaînes des DLL)
+  sont `GeometryLayerGroup3dLayerImporter` (GeometryLayers.dll, le « Import as 3D group » de l'interface) et
+  `StageGroup3dLayerImporter` (Pipeline.dll). Impossible de fabriquer un ClassObject : une chaîne, une instance de l'importeur
+  (`Oil.createObject("GeometryLayerGroup3dLayerImporter")` marche) ou son type Python sont refusés (« expected ClassObject ») ;
+  `Oil.createObject("ClassObject")` en donne un vide, sans variable ; `Oil.getObject(espace, uid)` trouve des objets par id, pas des
+  classes. Construire le groupe soi-même (point suivant).
+- **Ce que construit « Import as 3D group »** (FBX de Blender, vérifié sur 14 pièces) : un `Group3dLayer` au nom du fichier ; dans
+  ses `tools` une `MaterialBank` (sans nom) avec un `PBRSurfaceGeometryRenderer` par matériau du FBX, nommé comme dans le fichier ;
+  par nœud FBX ayant des enfants, un `Group3dLayer` à son nom contenant un `NullLayer` « Null » (pour un Empty) puis ses enfants ;
+  par nœud maillage, un `GeometryLayer` (label = nom du nœud) avec un `Scene3dFileGeometryGenerator` (même `file.path`,
+  `subGeometryToUse` = chemin du nœud) et un rendu `ReferenceGeometryLayerUser` vers le matériau de la banque
+  (`referencer.address.location` internalDirect, `directPointer`). Le `placement` de chaque calque = `Lcl Translation` du nœud
+  (mètres : valeur FBX x `UnitScaleFactor` / 100), `Lcl Rotation` (degrés, même ordre X/Y/Z) et `Lcl Scaling` ; le générateur de la
+  pièce a **`useLocalPlacement` à True** (la pièce dans son propre repère, le calque la place ; False, défaut d'un chargeur créé par
+  script, sert à un objet « fichier entier »). L'unité du fichier est une échelle de toute la scène : appliquer `UnitScaleFactor` / 100
+  aux nœuds RACINES seulement (position et échelle). L'export par défaut de Blender écrit en centimètres, la racine à l'échelle 100 et
+  -90° en X : échelle de la racine 100 x 0,01 = 1, enfants tels quels. Vérifié sur un robot Blender à 4 niveaux (un maillage avec des
+  maillages enfants, échelles non uniformes) : les matrices monde ainsi construites égalent `matrix_world` de Blender passé en Y vers
+  le haut ((x, y, z) -> (x, z, -y)) à 1e-7 près, et la taille à l'écran est celle d'un import simple « fichier entier » du même
+  fichier (SMODE ne convertit pas les sommets d'un FBX en centimètres : la pièce est dans ses unités brutes, l'échelle de la racine
+  x l'unité donne les mètres). Le même arbre construit par script avec ces classes est identique.
+- **Les angles d'Euler de SMODE = FBX XYZ** (`EulerAngles`, ordre par défaut) : R = Rz . Ry . Rx (vecteurs colonnes).
+  `layer.worldMatrix` se lit en 4 lignes `x y z w` (chacune `.x .y .z .w`), vecteurs lignes, translation dans la ligne `w` ; elle reste à
+  l'identité sur un élément non calculé (Compo à l'œil fermé). Ses matériaux : albédo = `TextureLayer3dColorizer` sur la texture
+  DiffuseColor, sinon `Uniform3dColorizer` avec DiffuseColor ; émissif = EmissiveColor tel quel (EmissiveFactor ignoré) ; rugosité
+  et métal à 0 (les textures de rugosité / métal que Blender met sur ShininessExponent / ReflectionFactor ne sont pas reprises).
+- **Un FBX binaire se lit facilement en Python** (sans bibliothèque) : en-tête `Kaydara FBX Binary  \0`, version à l'octet 23
+  (>= 7500 : en-têtes d'enregistrement sur 64 bits) ; un enregistrement = position de fin, nombre de propriétés, taille des
+  propriétés, nom, propriétés typées (`Y C I F D L` ; tableaux `f d l i b` avec un en-tête de 12 octets ; chaînes `S R`).
+  `Objects` (Model : nom `"<nom>\0\x01Model"`, type « Mesh » / « Null », enregistrements P de `Properties70`), `Connections`
+  (`C "OO" enfant parent`, `C "OP" texture matériau "DiffuseColor"`), `GlobalSettings` (UpAxis, UnitScaleFactor). Fichiers de
+  texture : `RelativeFilename` à côté du FBX, sinon le nom seul à côté.
 - **Chemin Media Directory** valable pour le FBX et les images : `"Smode Files/Old TV retro/old_tv_v02_textured.fbx"` (copier les fichiers
   dans un sous-dossier du Media Directory ; liste des dossiers dans `%APPDATA%\Smode Compose\configurations\Data_15_9.configuration`) ;
   `reload.trig()` après une copie fraîche. Portable, contrairement à un chemin absolu `G:\...`.
@@ -953,7 +986,8 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   relu après la sauvegarde du projet sous la forme `"Old TV retro/old_tv_v02_textured.fbx"` (le fichier est dans
   `<Smode Files>\Old TV retro\`). Pour retrouver le fichier sur disque depuis `file.path.get()` : essayer `<nom>/reste` avec
   les noms des Media Directories, puis le chemin entier dans le dossier de chaque Media Directory ; ou demander à SMODE :
-  `ref.file.get().nativeFile.get()` donne le chemin absolu.
+  `ref.file.get().nativeFile.get()` donne le chemin absolu. Troisième forme : un fichier du dossier du projet revient relatif à ce
+  dossier (`"NodeEditor Textures/x.png"` pour `<dossier du projet>\NodeEditor Textures\x.png`) : essayer d'abord le dossier du projet.
 - **Vider le chemin d'un fichier 3D ne le décharge pas** : `Scene3dFileGeometryGenerator.file.path.set("")` laisse à l'écran la
   géométrie déjà chargée. Donner au calque un chargeur neuf, vide (`layer.generator = Oil.createObject("Scene3dFileGeometryGenerator")`).
 - **Pas de PBR quand seul l'albédo compte** : un `SurfaceGeometryRenderer` simple avec le seul composant Diffuse (`components.removeAt(1)`
@@ -1268,6 +1302,14 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   `TextureLayer` et un `BlurV8TextureModifier` rangé 9 niveaux plus bas (chaque pointeur désigne l'élément vivant du projet rouvert,
   ses parents jusqu'à la Show). Le moyen de retrouver les mêmes éléments après un redémarrage, même renommés ou déplacés (la liste
   n'existe qu'une fois le projet sauvegardé). Retirer le Script d'un tel test : `project.tools.removeAt(i)`.
+- **L'adresse d'un objet, lisible par un pointeur (17/11/2026)** : `str()` d'un `WeakPointer` / `directPointer` donne l'adresse de la
+  cible `@space/<uuid>` (ex. `str(ref.referencer.address.directPointer)` sur un `ReferenceGeometryLayerUser`) : stable et unique, la clé
+  pour reconnaître un objet référencé. Seulement pour un objet du document : le pointeur d'un objet détaché affiche `""` (et
+  `WeakPointer.set(None)` est refusé).
+- **`is` peut mentir sur un objet refait (17/11/2026)** : l'enveloppe Python d'un objet Oil détruit, gardée dans un dictionnaire, peut
+  être rendue pour un nouvel objet créé au même endroit (calques retirés puis reconstruits dans le même groupe) : `nouveau is ancien`
+  est alors vrai. Un registre `{id: objet}` comparé avec `is` a donné aux nouvelles pièces les ids des anciennes. Oublier les entrées
+  de ce qu'on détruit, ou comparer des adresses (point précédent).
 - **SMODE n'exécute que les Scripts du document au premier plan** : un pont resté dans une compo en arrière-plan ne répond plus (504).
 - Un Script glissé dans les outils démarre en `launchMode` `manual`. Après `sourceCode.set`, ses `dynamicVariables` ne sont remplies qu'au retour
   de l'appel (un `KeyError` sur leur nom dans le même appel).
