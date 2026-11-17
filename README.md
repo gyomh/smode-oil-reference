@@ -1217,7 +1217,7 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   `<Smode Files>\Old TV retro\`). To find the file on disk from `file.path.get()`, try `<name>/rest` against the Media
   Directory names, then the whole path inside each Media Directory folder; or ask SMODE: `ref.file.get().nativeFile.get()`
   gives the absolute path. A third form: a file inside the project's own folder comes back relative to that folder
-  (`"NodeEditor Textures/x.png"` for `<project folder>\NodeEditor Textures\x.png`): try the project's folder first.
+  (`"Textures/x.png"` for `<project folder>\Textures\x.png`): try the project's folder first.
 - **Emptying a 3D file path does not unload it**: `Scene3dFileGeometryGenerator.file.path.set("")` leaves the geometry already
   loaded on screen. Give the layer a new, empty loader (`layer.generator = Oil.createObject("Scene3dFileGeometryGenerator")`).
 - **No PBR when only the albedo matters**: a plain `SurfaceGeometryRenderer` with the Diffuse component only (`components.removeAt(1)`

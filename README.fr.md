@@ -987,7 +987,7 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   `<Smode Files>\Old TV retro\`). Pour retrouver le fichier sur disque depuis `file.path.get()` : essayer `<nom>/reste` avec
   les noms des Media Directories, puis le chemin entier dans le dossier de chaque Media Directory ; ou demander à SMODE :
   `ref.file.get().nativeFile.get()` donne le chemin absolu. Troisième forme : un fichier du dossier du projet revient relatif à ce
-  dossier (`"NodeEditor Textures/x.png"` pour `<dossier du projet>\NodeEditor Textures\x.png`) : essayer d'abord le dossier du projet.
+  dossier (`"Textures/x.png"` pour `<dossier du projet>\Textures\x.png`) : essayer d'abord le dossier du projet.
 - **Vider le chemin d'un fichier 3D ne le décharge pas** : `Scene3dFileGeometryGenerator.file.path.set("")` laisse à l'écran la
   géométrie déjà chargée. Donner au calque un chargeur neuf, vide (`layer.generator = Oil.createObject("Scene3dFileGeometryGenerator")`).
 - **Pas de PBR quand seul l'albédo compte** : un `SurfaceGeometryRenderer` simple avec le seul composant Diffuse (`components.removeAt(1)`
