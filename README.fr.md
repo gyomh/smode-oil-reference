@@ -1743,6 +1743,11 @@ du dict d'état.
 
 - **Script en Launch Mode « At Every Update »** : il démarre une fois un `ThreadingHTTPServer` sur `127.0.0.1`
   (état gardé dans un global, ex. `_FMG`) puis, à chaque frame, traite une `queue.Queue` de tâches Oil.
+- **Mettre un tel outil au repos** : `launchMode.set(0)` (Manual) arrête l'exécution à chaque frame, c'est elle qui
+  coûte du temps d'image, mais le thread du serveur continue et la page reçoit toujours ses réponses (mesuré : mêmes
+  réponses, environ 0,5 s au lieu de 0,3 s). `launchMode.set(4)` (At Every Update) le relance aussitôt, sans
+  redémarrer le serveur. Un hôte peut donc laisser en At Every Update le seul outil dont l'interface est affichée, et
+  les autres en Manual. Valeurs de `PythonScriptTool.launchMode` : 0 manual, 3 atParameterChange, 4 atEveryUpdate.
 - **Oil seulement sur le thread principal** : le thread HTTP pose une tâche (`{"task", "arg", "done": Event}`) et
   attend l'`Event` ; la frame suivante l'exécute. Le travail lourd **sans Oil** (`os.walk`, copie de fichiers par
   blocs avec progression) reste dans un thread : Smode ne gèle pas.

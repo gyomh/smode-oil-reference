@@ -1989,6 +1989,11 @@ Windows that lets a **second server bind the same port**: the old one, whose sta
 
 - **Script in Launch Mode "At Every Update"**: it starts a `ThreadingHTTPServer` on `127.0.0.1` once (state kept in a
   global, e.g. `_FMG`) then, on every frame, processes a `queue.Queue` of Oil tasks.
+- **Pausing such a tool**: `launchMode.set(0)` (Manual) stops the run on every frame, which is what costs frame time,
+  but the server thread lives on and the page still gets answers (measured: same replies, about 0.5 s instead of
+  0.3 s). `launchMode.set(4)` (At Every Update) brings it back at once, without restarting the server. So a host
+  can leave only the tool whose interface is shown in At Every Update and the others in Manual. Values of
+  `PythonScriptTool.launchMode`: 0 manual, 3 atParameterChange, 4 atEveryUpdate.
 - **Oil only on the main thread**: the HTTP thread posts a task (`{"task", "arg", "done": Event}`) and waits for the
   `Event`; the next frame runs it. Heavy work **without Oil** (`os.walk`, chunked file copy with progress) stays in a
   thread: Smode does not freeze.
