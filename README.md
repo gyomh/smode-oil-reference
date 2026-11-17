@@ -1442,6 +1442,10 @@ still (`ready`) and whatever reads it stutters until it is restarted by hand. Se
   its position in the measure.
 - Other `TempoTool` properties: `beatsPerMeasure` (length of the measure, hence of `positionInMeasure`), `speedMultiplier`, `beatDuration` (ms), `positionInBeat`,
   `beatCount`, `tapCount`, `timeValue`. `positionInMeasure.toString()` returns a percentage (`34.667`).
+- **One tempo for several effects (verified)**: a `TempoTool` created by script in the tools of the Show
+  (`masterScene.tools`, reached from a Script by walking up to the highest `Scene`), found again by its label by each
+  Script, its `positionInMeasure` linked to the shader of every effect: a `tap`, a `tempo` or a `resync` from any of them
+  moves them all, in phase. Rebuild an effect's `Link` when it switches to another `TempoTool`.
 - `AudioSpectrumLinkSource`: `extractor.audioChannel`, `extractor.frequencyInterval`, `extractor.amplitudeInterval`, `method`, to send a band (kick) to a parameter. Wiring verified, not the result on real sound.
 - `engine.status.gpuConsumption`, `.cpuConsumption`, `.frame.rate.toString()` (`16.67 ms / 60`) read the load by script. The GPU reading is noisy, with isolated spikes.
 - `engine.status.frame` (`FrameInformation`, no `get()` on it: read its fields): `rate.get()` = images per second, `rate.toString()` = `"28.95 ms / 34.55"`
@@ -1473,6 +1477,11 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   of the same Script, or two versions, overwrite each other's functions and state. Remedy: run the code in a dictionary of its own per version
   (`exec(compile(code, ...), space)`, passing `Oil` and `engine` in) and keep one state per tool.
 - Oil wrappers are stable: `script` is the same Python object from frame to frame, so `id(tool)` and `is` identify a Script.
+  **But only while it runs (17/11/2026)**: once the Script restarts (same code set again, Script reloaded), `script` can be a new Python
+  object: a state kept per `id(tool)` is then made a second time and the old one stays in memory, no longer called. Seen with an HTTP
+  server started by the Script: the old state still held its port, the new one got `WinError 10048` (port busy). Remedy: free the port of
+  a state that has stopped ticking, and **try the bind again** every second instead of once (a state that stopped less than a few
+  seconds ago cannot be told from a live one).
   `tool.getUniqueIdentifier()` on a `PythonScriptTool` raises `TypeError` (`juce::Uuid` cannot be converted).
 - **SMODE only runs the Scripts of the document in front**: a bridge left in a compo in the background stops answering (504).
 - A Script dragged into the tools starts with `launchMode` `manual`. After `sourceCode.set`, its `dynamicVariables` are filled only once the call

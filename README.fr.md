@@ -1209,6 +1209,10 @@ rester immobile (`ready`) et ce qui la lit saccade jusqu'à une relance à la ma
   sa position dans la mesure.
 - Autres propriétés du `TempoTool` : `beatsPerMeasure` (longueur de la mesure, donc de `positionInMeasure`), `speedMultiplier`, `beatDuration` (ms), `positionInBeat`,
   `beatCount`, `tapCount`, `timeValue`. `positionInMeasure.toString()` renvoie un pourcentage (`34.667`).
+- **Un tempo pour plusieurs effets (vérifié)** : un `TempoTool` créé par script dans les outils de la Show
+  (`masterScene.tools`, atteinte depuis un Script en remontant jusqu'à la `Scene` la plus haute), retrouvé par son label par
+  chaque Script, son `positionInMeasure` lié au shader de chaque effet : un `tap`, un `tempo` ou un `resync` venu de n'importe
+  lequel les fait tous bouger, en phase. Refaire le `Link` d'un effet quand il passe sur un autre `TempoTool`.
 - `AudioSpectrumLinkSource` : `extractor.audioChannel`, `extractor.frequencyInterval`, `extractor.amplitudeInterval`, `method`, pour envoyer une bande (kick) vers un paramètre. Câblage vérifié, pas le résultat sur du vrai son.
 - `engine.status.gpuConsumption`, `.cpuConsumption`, `.frame.rate.toString()` (`16.67 ms / 60`) lisent la charge par script. La mesure GPU est bruitée, avec des pics isolés.
 - `engine.status.frame` (`FrameInformation`, pas de `get()` dessus : lire ses champs) : `rate.get()` = images par seconde, `rate.toString()` =
@@ -1240,6 +1244,11 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   autre). Deux exemplaires du même Script, ou deux versions, s'écrasent leurs fonctions et leur état. Parade : exécuter le code dans un
   dictionnaire à part par version (`exec(compile(code, ...), espace)`, en y passant `Oil` et `engine`) et garder un état par outil.
 - Les wrappers Oil sont stables : `script` est le même objet Python d'une image à l'autre, donc `id(tool)` et `is` identifient un Script.
+  **Mais seulement tant qu'il tourne (17/11/2026)** : quand le Script redémarre (même code reposé, Script rechargé), `script` peut être un
+  nouvel objet Python : un état gardé par `id(tool)` est alors recréé et l'ancien reste en mémoire, plus jamais appelé. Vu avec un serveur
+  HTTP lancé par le Script : l'ancien état tenait encore son port, le nouveau a reçu `WinError 10048` (port occupé). Remède : libérer le
+  port d'un état qui ne tourne plus, et **réessayer le bind** chaque seconde au lieu d'une fois (un état arrêté depuis quelques secondes
+  ne se distingue pas d'un état vivant).
   `tool.getUniqueIdentifier()` sur un `PythonScriptTool` lève `TypeError` (`juce::Uuid` non convertible).
 - **SMODE n'exécute que les Scripts du document au premier plan** : un pont resté dans une compo en arrière-plan ne répond plus (504).
 - Un Script glissé dans les outils démarre en `launchMode` `manual`. Après `sourceCode.set`, ses `dynamicVariables` ne sont remplies qu'au retour
