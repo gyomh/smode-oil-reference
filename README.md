@@ -2273,8 +2273,16 @@ and writes it back from an external node editor.
 - **Image sequences**: SMODE reads a **folder named `<name>@<fps>.imagesequence`** as a video (its own export names it
   so: `ExplosionCartoon@50.imagesequence`). By script: `VideoFileTextureGenerator.file.path` = the folder. The frames
   inside may have any name (checked: `x_00001.png`, `00001.png`, `shot_v2.0001.png`, all read at 256 x 256, playing).
-  A plain folder of frames is not read: a tool can make that folder next to the frames with hard links (`os.link`,
-  instant, no space on the same drive) and rename it to change the fps.
+  A plain folder of frames is not read: a tool can rename it to that name (only when it holds the sequence alone:
+  every image of the folder becomes a frame) or make a sibling folder of hard links (`os.link`, instant, no space on
+  the same drive); renaming changes the fps. A layer reading the folder did not keep it open (renamed while playing,
+  R15, 17/11/2026); a layer then given the new path reads it at once.
+- **HAP for SMODE (checked, R15, 17/11/2026)**: `ffmpeg -c:v hap -format hap_q|hap|hap_alpha -chunks 8` in a `.mov`,
+  width / height padded to multiples of 4 (`pad=ceil(iw/4)*4:ceil(ih/4)*4:0:0:color=black@0`, `format=rgba` first for
+  HAP Alpha), sound `-c:a pcm_s16le`: SMODE reads it with `liveStatus` "success" (a 1918 x 1078 H.264 became 1920 x 1080
+  HAP Q). An image sequence goes through an `ffconcat` list (`duration 1/fps` per frame). The same media as `.mp4` gets
+  the warning "Video (with or without Audio) mp4 support is experimental"; a PNG sequence "The codecs that are supported
+  officially by smode are...". SMODE's own exporter defaults to QuickTime + Hap with 16 chunks.
 - **Shared elements in a Compo's tools**: not only Show's tools hold `SharedElement(...)` (a plugin may keep its media
   in a sub-Compo's tools). A layer showing one has a `ReferenceTextureGenerator` (named `[[<name>]]` by SMODE);
   `generator.referencer.address.target.get()` is the shared content (compare with `is`). The image inputs of an ISF

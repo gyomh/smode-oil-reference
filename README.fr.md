@@ -2041,9 +2041,18 @@ et le réécrit depuis un éditeur de nodes externe.
 - **Séquences d'images** : SMODE lit comme une vidéo un **dossier nommé `<nom>@<cadence>.imagesequence`** (son propre
   export le nomme ainsi : `ExplosionCartoon@50.imagesequence`). Par script : `VideoFileTextureGenerator.file.path` = le
   dossier. Les images dedans peuvent porter n'importe quel nom (vérifié : `x_00001.png`, `00001.png`, `shot_v2.0001.png`,
-  toutes lues en 256 x 256, en lecture). Un dossier d'images ordinaire n'est pas lu : un outil peut créer ce dossier à
-  côté des images avec des liens physiques (`os.link`, instantané, sans place prise sur le même disque) et le renommer
-  pour changer la cadence.
+  toutes lues en 256 x 256, en lecture). Un dossier d'images ordinaire n'est pas lu : un outil peut le renommer ainsi
+  (seulement s'il ne contient que la séquence : toute image du dossier devient une image de la séquence) ou créer à côté
+  un dossier de liens physiques (`os.link`, instantané, sans place prise sur le même disque) ; renommer change la cadence.
+  Un calque qui lit le dossier ne le gardait pas ouvert (renommé pendant la lecture, R15, 17/11/2026) ; un calque à qui
+  l'on donne ensuite le nouveau chemin le lit aussitôt.
+- **HAP pour SMODE (vérifié, R15, 17/11/2026)** : `ffmpeg -c:v hap -format hap_q|hap|hap_alpha -chunks 8` dans un `.mov`,
+  largeur / hauteur complétées aux multiples de 4 (`pad=ceil(iw/4)*4:ceil(ih/4)*4:0:0:color=black@0`, `format=rgba`
+  d'abord pour le HAP Alpha), son `-c:a pcm_s16le` : SMODE le lit avec `liveStatus` « success » (un H.264 1918 x 1078 est
+  devenu un HAP Q 1920 x 1080). Une séquence d'images passe par une liste `ffconcat` (`duration 1/cadence` par image). Le
+  même média en `.mp4` donne l'avertissement « Video (with or without Audio) mp4 support is experimental » ; une
+  séquence PNG « The codecs that are supported officially by smode are... ». L'exporteur de SMODE est par défaut en
+  QuickTime + Hap à 16 chunks.
 - **Éléments partagés dans les outils d'une Compo** : il n'y a pas que les outils de Show qui contiennent des
   `SharedElement(...)` (un plugin peut garder ses médias dans les outils d'une sous-Compo). Un calque qui en montre un a
   un `ReferenceTextureGenerator` (nommé `[[<nom>]]` par SMODE) ; `generator.referencer.address.target.get()` est le
