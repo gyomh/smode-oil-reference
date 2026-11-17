@@ -1978,6 +1978,15 @@ Verified by relinking a project with 136 media files (ProRes videos + PNGs) afte
 Pattern validated with [smode-filemanager](https://github.com/gyomh/smode-filemanager) (`Smode_Filemanager_GUI.py`):
 a real graphical interface for a Script, with nothing to install.
 
+**Trap: a stale server keeps the port (R15, 17/11/2026).** SMODE may give a running Script **fresh globals** (its state
+dict starts again) while the server thread of the old state lives on. `ThreadingHTTPServer` sets `SO_REUSEADDR`, and on
+Windows that lets a **second server bind the same port**: the old one, whose state no longer ticks, kept answering
+"the Script does not process requests" while the Script ran fine (found: 3 copies of the state in memory, the oldest
+3 h stale, holding the port). Fix: keep the servers in a registry that no globals reset touches (`sys.modules`, e.g.
+`sys.modules["_my_registry"] = types.ModuleType(...)`), stop whatever serves the port before starting, and set
+`allow_reuse_address = False` on the server class so a port still held fails loudly. To find the copies:
+`gc.get_objects()` filtered on the keys of the state dict.
+
 - **Script in Launch Mode "At Every Update"**: it starts a `ThreadingHTTPServer` on `127.0.0.1` once (state kept in a
   global, e.g. `_FMG`) then, on every frame, processes a `queue.Queue` of Oil tasks.
 - **Oil only on the main thread**: the HTTP thread posts a task (`{"task", "arg", "done": Event}`) and waits for the
