@@ -1464,6 +1464,9 @@ Verified while building a real-time datamosh: one `IsfFileTextureModifier` recei
 - `Percentage`: `set(0.35)` but `toString()` returns `35.000` (divide by 100 when reading). `CustomEnumeration`: `set("Motion First")` by menu text, `toString()` returns that text,
   `.enumerators` lists the `CustomEnumerator` objects (`label`, `value`).
 - Reinstalling the modifier (`removeAt` + new object) destroys its links: rebuild them a few frames later, once the variables exist.
+- **Shader written into a folder just made (R15, 19/11/2026)**: the modifier may stay several seconds in `liveStatus` "Could not find file
+  ...fs" with no variables, although the file is on disk; it loads by itself in the end. 5 frames are not enough: wait for the
+  `dynamicVariables` to appear (try again every frame), trigger `mod.file.reload.trig()` once after ~30 frames, give up after a few seconds.
 - `TIMEDELTA`, `FRAMEINDEX`, `IMG_SIZE`, multiple passes and `PERSISTENT` work. The engine runs faster than the clip (60 Hz against 25 fps): to process each clip frame once,
   detect the change in a pass rather than rely on `FRAMEINDEX`.
 
@@ -1645,6 +1648,10 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
 - `video.transport.player.parameters`: `in` and `out` (optional: `.enabled`, `.value`), `looping`, `speed`, `playMode`, `targetLength`;
   `in` is a Python keyword: `getattr(params, "in")`. **Changing `file.path` keeps the previous clip's `out` point**: a shorter clip holds its last
   image instead of looping. Set `out.enabled` to False on load. Times read `h:mm:ss:frames`.
+- **Play position (R15, 19/11/2026)**: `video.transport.position` is a `Seconds`; `toString()` gives a timecode (`0:00:12:05`), `get()` gives
+  seconds as a `float`. So `float(position.toString())` raises `ValueError`. `player.parameters.speed`: `toString()` = `1`, `set(0.5)` works
+  (playback speed, settable by script even on a detached player).
+- `TempoTool.positionInBeat.toString()` is a percentage like `positionInMeasure` (`57.847`): divide by 100.
 - `UniformTextureGenerator`: plain colour generator, almost free, for a layer whose picture comes from a modifier. Size:
   `resolution.preset.set(40)` (Custom) then `resolution.width.set(w)` / `height.set(h)`. In the shader, read the output size from a persistent
   buffer (`IMG_SIZE(myBuffer)`), the layer's own image no longer being the source.
@@ -1856,6 +1863,21 @@ script itself.
   `restartServer` checkbox (purges functions absent from the source through `ast` +
   `script.script.sourceCode.get()`, then restarts the server in a thread — `shutdown()` would
   block the main thread).
+
+### Moving a Script into the tools of another Compo — confirmed R15 (19/11/2026)
+
+- `copy = tool.clone()` on a `PythonScriptTool`, then `otherCompo.tools.append(copy)` and `tools.removeAt(i)` of the original
+  (from another Script, never from itself): the copy keeps its code and **all its parameters**, an
+  `OwnedVector(WeakPointer(Element))` list declared as a parameter included (its pointers stay valid). It starts as a new
+  Script: `parentElement` is the new Compo, the Python state kept by the original is not carried over.
+- A Script serving a web page keeps its port while its state is not stopped: have the original's server closed
+  (`shutdown()` + `server_close()`) **before** removing it, otherwise the copy takes the next port.
+- A Compo made by script (`TextureLayer` + `Compo`, resolution set to Custom) can get layers and tools in the same run; read
+  the object back from its vector after `append` (`compo.layers[len(compo.layers) - 1].generator`).
+- An `OwnedVector(WeakPointer(Element))` list of a Script can be filled by another Script (empty it with `removeAt`, then
+  `append(Oil.createObject("WeakPointer(Element)"))` and `.set(SharedElement)`): the owning Script reads `vec[k].get()`.
+  A `ReferenceTextureGenerator` (image input of an ISF modifier) can point to a `SharedElement` of the Show's tools from a
+  nested Compo: `elementPointer.set(se.getVariableByName("content"))`.
 
 ### Reloading a script / clearing the Python cache — confirmed R15 (06/10/2026)
 

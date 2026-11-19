@@ -1247,6 +1247,9 @@ Vérifié en construisant un datamosh temps réel : un `IsfFileTextureModifier` 
 - `Percentage` : `set(0.35)` mais `toString()` renvoie `35.000` (diviser par 100 à la relecture). `CustomEnumeration` : `set("Motion First")` par le texte du menu,
   `toString()` renvoie ce texte, `.enumerators` liste les `CustomEnumerator` (`label`, `value`).
 - Réinstaller le modifier (`removeAt` + nouvel objet) détruit ses liens : les refaire, quelques frames plus tard, le temps que les variables existent.
+- **Shader écrit dans un dossier tout juste créé (R15, 19/11/2026)** : le modifier peut rester plusieurs secondes en `liveStatus` « Could not find file
+  ...fs » sans aucune variable, alors que le fichier est sur le disque ; il finit par se charger seul. 5 frames ne suffisent pas : attendre que les
+  `dynamicVariables` apparaissent (réessayer à chaque frame), déclencher `mod.file.reload.trig()` une fois après ~30 frames, abandonner après quelques secondes.
 - `TIMEDELTA`, `FRAMEINDEX`, `IMG_SIZE`, passes multiples et `PERSISTENT` fonctionnent. Le moteur tourne plus vite que le clip (60 Hz contre 25 fps) : pour traiter
   chaque image du clip une seule fois, détecter le changement dans une passe plutôt que compter sur `FRAMEINDEX`.
 
@@ -1417,6 +1420,10 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
 - `video.transport.player.parameters` : `in` et `out` (optionnels : `.enabled`, `.value`), `looping`, `speed`, `playMode`, `targetLength` ;
   `in` est un mot réservé Python : `getattr(params, "in")`. **Changer `file.path` garde le point `out` de l'ancien clip** : un clip plus court reste
   figé sur sa dernière image au lieu de boucler. Remettre `out.enabled` à False au chargement. Les temps s'affichent `h:mm:ss:images`.
+- **Position de lecture (R15, 19/11/2026)** : `video.transport.position` est un `Seconds` ; `toString()` rend un timecode (`0:00:12:05`), `get()`
+  rend des secondes en `float`. `float(position.toString())` lève donc `ValueError`. `player.parameters.speed` : `toString()` = `1`, `set(0.5)` marche
+  (vitesse de lecture, réglable par script même sur un player détaché).
+- `TempoTool.positionInBeat.toString()` est en pourcentage comme `positionInMeasure` (`57.847`) : diviser par 100.
 - `UniformTextureGenerator` : générateur uni, presque gratuit, pour un calque dont l'image vient d'un modifier. Taille :
   `resolution.preset.set(40)` (Custom) puis `resolution.width.set(w)` / `height.set(h)`. Dans le shader, la taille de sortie se lit sur un tampon
   persistant (`IMG_SIZE(monTampon)`), l'image du calque n'étant plus la source.
@@ -1618,6 +1625,21 @@ pas seulement le script lui-même.
   `if "x" not in globals()` garde aussi l'ancienne classe de handler. Solution du pont : case
   `restartServer` (purge des fonctions absentes du source via `ast` + `script.script.sourceCode.get()`,
   puis redémarrage du serveur dans un thread — `shutdown()` bloquerait le thread principal).
+
+### Déplacer un Script dans les outils d'une autre Compo — confirmé R15 (19/11/2026)
+
+- `copie = tool.clone()` sur un `PythonScriptTool`, puis `autreCompo.tools.append(copie)` et `tools.removeAt(i)` de l'original
+  (depuis un autre Script, jamais depuis lui-même) : la copie garde son code et **tous ses paramètres**, y compris une liste
+  `OwnedVector(WeakPointer(Element))` déclarée en paramètre (ses pointeurs restent valides). Elle repart comme un nouveau
+  Script : `parentElement` est la nouvelle Compo, l'état Python gardé par l'original n'est pas repris.
+- Un Script qui sert une page web garde son port tant que son état n'est pas arrêté : faire fermer le serveur de l'original
+  (`shutdown()` + `server_close()`) **avant** de le retirer, sinon la copie prend le port suivant.
+- Une Compo créée par script (`TextureLayer` + `Compo`, résolution en Custom) peut recevoir des calques et des outils dans la
+  même exécution ; relire l'objet depuis son vecteur après `append` (`compo.layers[len(compo.layers) - 1].generator`).
+- Une liste `OwnedVector(WeakPointer(Element))` d'un Script peut être remplie par un autre Script (vider avec `removeAt`, puis
+  `append(Oil.createObject("WeakPointer(Element)"))` et `.set(SharedElement)`) : le Script propriétaire lit `vec[k].get()`.
+  Une `ReferenceTextureGenerator` (entrée image d'un modifier ISF) peut pointer vers un `SharedElement` des outils de la Show
+  depuis une Compo imbriquée : `elementPointer.set(se.getVariableByName("content"))`.
 
 ### Recharger un script / vider le cache Python — confirmé R15 (06/10/2026)
 
