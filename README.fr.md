@@ -1439,6 +1439,14 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   `Video Input N`), `identifier`, `size` (`1280x720`), `status`, `initialized`. Une carte de capture rebranchée peut revenir sous un
   autre nom (`MiraBox Video Capture 6` puis `7`).
 - Une entrée vidéo enregistrée avec la fabrique NDI se lit `device = {factory = "Remote Video Input"}` dans le `.compo`.
+- **`deviceName` suffit, NDI compris (R15, 19/11/2026)** : un `VideoInputTextureGenerator` neuf à qui l'on donne
+  `device.deviceName.set("Video Input 1")`, posé dans l'arbre, trouve le périphérique dont l'`ioChannel` vaut 1 et règle lui-même
+  `factory` (`"Remote Video Input"` pour une source NDI) ; `sourceResolution` donne la taille de la source à l'image suivante. Un
+  générateur neuf part avec `deviceName` `Video Input 1` et une `factory` vide.
+- **Lire un périphérique (R15, 19/11/2026)** : `ioChannel.get()` marche (un entier), mais `identifier` est un `StringDeviceIdentifier`,
+  `size` un `PixelSize` et `status` un `SuccessStatus`, aucun n'a de `get()` (`AttributeError`) : les lire par `toString()`
+  (`getFriendlyName()` donne aussi l'identifiant). `engine.devices.devices` liste tous les périphériques (sorties vidéo, disques,
+  audio) : garder les classes dont le nom contient `VideoInputDevice`.
 
 **Lecteur vidéo et générateurs**
 - `video.transport.player.parameters` : `in` et `out` (optionnels : `.enabled`, `.value`), `looping`, `speed`, `playMode`, `targetLength` ;

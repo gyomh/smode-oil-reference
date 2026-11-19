@@ -1667,6 +1667,14 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   `identifier`, `size` (`1280x720`), `status`, `initialized`. A capture card plugged again can come back under another name
   (`MiraBox Video Capture 6` then `7`).
 - A video input saved with the NDI factory reads `device = {factory = "Remote Video Input"}` in the `.compo`.
+- **`deviceName` alone is enough, NDI included (R15, 19/11/2026)**: a new `VideoInputTextureGenerator` given
+  `device.deviceName.set("Video Input 1")` and put in the tree finds the device whose `ioChannel` is 1 and sets `factory` itself
+  (`"Remote Video Input"` for an NDI source); `sourceResolution` gives the source's size on the next frame. A fresh generator
+  starts with `deviceName` `Video Input 1` and an empty `factory`.
+- **Reading a device (R15, 19/11/2026)**: `ioChannel.get()` works (an int), but `identifier` is a `StringDeviceIdentifier`,
+  `size` a `PixelSize` and `status` a `SuccessStatus`, none with `get()` (`AttributeError`): read them with `toString()`
+  (`getFriendlyName()` also gives the identifier). `engine.devices.devices` lists every device (video outputs, disks, audio):
+  keep the classes whose name contains `VideoInputDevice`.
 
 **Video player and generators**
 - `video.transport.player.parameters`: `in` and `out` (optional: `.enabled`, `.value`), `looping`, `speed`, `playMode`, `targetLength`;
