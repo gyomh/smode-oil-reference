@@ -638,6 +638,46 @@ enums qui exigent `.set()`.
   `Parameter(SpeedFactor)`, `Parameter(Boolean)`) exposent des contrôles dans l'UI Smode.
 - Lier un paramètre à une propriété cible : créer un `ParameterLinkTarget`, `.target.set(var)`,
   puis `sourceWithTargets.targets.append(lt)`.
+  **Un Parameter construit par script ne pousse pas sa valeur de départ** : `p.value.set(0.584)`
+  avant que le lien existe laisse la cible à sa propre valeur (mesuré : calque Trace resté à 0.5
+  alors que le Parameter affiche 0.584, plusieurs images plus tard) ; la cible ne suit qu'à partir
+  du premier changement de `p.value`. Écrire aussi la valeur de départ dans la cible (et dans
+  chaque cible liée par un `ParameterLinkSource` sur ce Parameter).
+  **Des liens lisibles par l'utilisateur** : un lien fait à la main dans l'UI SMODE sur un Parameter
+  de banque est un `ParameterLinkTarget` dans `p.targets`, affiché sous le Parameter dans l'arbre et
+  nommé automatiquement `<Élément> Position -> Y`. Un `Link` de `LinkBank` dont la source est un
+  `ParameterLinkSource` sur `p.value` fonctionne mais l'UI le montre relié à rien : mettre toutes
+  les cibles d'un Parameter dans `p.targets` (un mapping inverse va dans les `.modifiers` de cette
+  cible), jamais dans une LinkBank à part.
+  **Relier les cibles APRÈS l'insertion de la Compo dans la scène, sinon elles cassent en Shared Element** :
+  un `lt.target.set(var)` fait quand l'objet de `var` n'est pas encore dans la scène fonctionne, mais la
+  cible devient vide (`<Disconnected>`) dès que l'utilisateur convertit la Compo en élément partagé (UI).
+  Mesuré sur la même Compo : cible reliée avant insertion perdue, cible reliée après insertion conservée
+  (comme un lien fait à la main). Les pointeurs vers des objets déjà dans le projet (canal d'un appareil
+  audio) tiennent. Tout construire, insérer la Compo, puis relier toutes les cibles. Un simple
+  `compo.clone()` remet bien les cibles dans les deux cas.
+- **`Interval(Frequency)` (ex. `AudioSpectrumLinkSource.extractor.frequencyInterval`) a `center` et `size`**
+  (variables `Frequency`) en plus de `begin`/`end` : `center.set(x)` déplace les deux bornes en gardant la largeur
+  (40-250 -> centre 1000 = 895-1105) ; `size.set(w)` garde le centre. Régler `begin` puis `end` un par un est
+  limité par l'autre borne (begin 895 alors que end vaut encore 250 -> reste 250). `Frequency` s'arrête à 0 ; le
+  begin de l'extracteur s'arrête à 22,05 Hz.
+- **Décaler deux paramètres de la même quantité, visiblement** : un Parameter dont les `targets` pointent sur la
+  `value` d'autres Parameters de banque, chaque cible avec un `OffsetLinkModifier` (`offset` = `Real`, plus
+  `complement` = Trigger). Les Parameters pilotés affichent la nouvelle valeur ET la transmettent à leurs propres
+  cibles (chaîne mesurée sur 2 images). Autres modificateurs de lien existants : `MultiplyLinkModifier` (`factor`),
+  `ClampLinkModifier` (`min`, `max`), `RemapLinkModifier` ; `AddLinkModifier` / `ScaleLinkModifier` n'existent pas.
+  Une valeur réglée dans le même appel que celui qui construit les liens n'est pas transmise : la régler une image plus tard.
+- **Les curseurs de fréquence sont logarithmiques** : les mêmes Hz ajoutés à deux Parameters `Frequency` déplacent
+  plus loin à l'écran celui du bas (+980 Hz = x1,73 sur 1335 Hz, x1,31 sur 3120 Hz). Pour déplacer une bande « pareil »
+  sur les deux curseurs, la déplacer en octaves : un Parameter Center (centre géométrique racine(min x max)) avec des
+  cibles `MultiplyLinkModifier` (min = c / k, max = c x k, k = racine(max / min)) ; le `frequencyInterval.center`
+  (arithmétique) de l'extracteur reçoit c x (k + 1/k) / 2, en première cible. Testé avec des sauts 200 Hz <-> 8000 Hz
+  dans les deux sens : rapport max / min conservé.
+- `bank.parameters.insert(i, p)` place un nouveau Parameter à un rang donné de sa banque (`insert` d'OwnedVector fonctionne).
+- Déplacer une forme sans toucher son calque : `TransformShapeModifier` dans `shapeGenerator.modifiers` (son `placement` =
+  `Parametric2dPlacement` : `anchor`, `position`, `rotation`, `scale.scaleFactor`). Le `renderer.placement.position` du calque
+  se lit AVANT lui : un script qui lit la position d'une forme pour en dessiner une autre reste aligné si les deux formes ont
+  le même modificateur.
 - `FunctionCue(Type)` (ex. `Angle`) + `ParametricScalarFunction({input=Seconds, output=Angle})`
   + une `shape` (`LinearRampFunctionShape`, `NoiseFunctionShape`...) pour des animations en boucle.
   **Toujours régler explicitement** `minimum`/`maximum`/`period`/`wrapMode`/`phase`/`offset`/

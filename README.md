@@ -801,6 +801,45 @@ script.project.masterScene.layers.append(scene)   # last append
   `Parameter(SpeedFactor)`, `Parameter(Boolean)`) expose controls in the Smode UI.
 - Linking a parameter to a target property: create a `ParameterLinkTarget`, `.target.set(var)`,
   then `sourceWithTargets.targets.append(lt)`.
+  **A Parameter built by script does not push its start value**: `p.value.set(0.584)` before
+  the link exists leaves the target at its own value (measured: Trace layer stays at 0.5 while
+  the Parameter shows 0.584, several frames later); the target only follows from the first
+  change of `p.value`. Also write the start value into the target (and into every target
+  linked through a `ParameterLinkSource` on that Parameter).
+  **Links the user can read**: a link made by hand in the SMODE UI on a bank Parameter is a
+  `ParameterLinkTarget` in `p.targets`, shown under the Parameter in the tree and auto-named
+  `<Element> Position -> Y`. A `Link` in a `LinkBank` whose source is a `ParameterLinkSource` on
+  `p.value` works but the UI shows it linked to nothing: put every target of a Parameter in
+  `p.targets` (an inverse mapping goes in that target's `.modifiers`), never in a separate LinkBank.
+  **Set link targets AFTER the Compo is in the scene, or they break in a Shared Element**: a
+  `lt.target.set(var)` done while `var`'s object is not yet in the scene works, but the target is
+  empty (`<Disconnected>`) once the user turns the Compo into a Shared Element (UI). Measured on
+  the same Compo: target set before insertion lost, target set after insertion kept (like a link
+  made by hand). Pointers to objects already in the project (audio device channel) are kept. Build
+  everything, insert the Compo, then set all the targets. A plain `compo.clone()` re-points targets
+  correctly in both cases.
+- **`Interval(Frequency)` (e.g. `AudioSpectrumLinkSource.extractor.frequencyInterval`) has `center` and `size`**
+  (`Frequency` variables) besides `begin`/`end`: `center.set(x)` moves both bounds, width kept (40-250 ->
+  center 1000 = 895-1105); `size.set(w)` keeps the center. Setting `begin` then `end` one by one is clamped
+  by the other bound (begin 895 while end is still 250 -> stays 250). `Frequency` stops at 0; the extractor's
+  begin stops at 22.05 Hz.
+- **Shifting two parameters by the same amount, visibly**: a Parameter whose `targets` point at the
+  `value` of other bank Parameters, each target with an `OffsetLinkModifier` (`offset` = `Real`, also
+  `complement` = Trigger). The driven Parameters show the new value AND pass it on to their own targets
+  (chain measured over 2 frames). Other link modifiers that exist: `MultiplyLinkModifier` (`factor`),
+  `ClampLinkModifier` (`min`, `max`), `RemapLinkModifier`; `AddLinkModifier` / `ScaleLinkModifier` do not.
+  A value set in the same call that builds the links is not passed on: set it a frame later.
+- **Frequency sliders are logarithmic**: the same Hz added to two `Frequency` Parameters moves the lower one
+  further on screen (+980 Hz = x1.73 on 1335 Hz, x1.31 on 3120 Hz). To move a band "the same" on both
+  sliders, move it in octaves: a Center Parameter (geometric center sqrt(min x max)) with
+  `MultiplyLinkModifier` targets (min = c / k, max = c x k, k = sqrt(max / min)); the extractor's
+  `frequencyInterval.center` (arithmetic) gets c x (k + 1/k) / 2, as the first target. Tested 200 Hz <-> 8000 Hz
+  jumps both ways: max / min ratio kept.
+- `bank.parameters.insert(i, p)` puts a new Parameter at a given place in its bank (OwnedVector `insert` works).
+- Moving a shape without touching its layer: `TransformShapeModifier` in `shapeGenerator.modifiers` (its
+  `placement` = `Parametric2dPlacement`: `anchor`, `position`, `rotation`, `scale.scaleFactor`). The layer's own
+  `renderer.placement.position` is read BEFORE it: a script that reads a shape's position to draw another shape stays
+  aligned when both shapes get the same modifier.
 - `FunctionCue(Type)` (e.g. `Angle`) + `ParametricScalarFunction({input=Seconds, output=Angle})`
   + a `shape` (`LinearRampFunctionShape`, `NoiseFunctionShape`...) for looping animations.
   **Always set explicitly** `minimum`/`maximum`/`period`/`wrapMode`/`phase`/`offset`/
