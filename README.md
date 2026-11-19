@@ -1621,6 +1621,11 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   alive when the signal drops.
 - An element dropped by hand into a library compo is a `SharedElement(TextureGenerator)` whose `content` can be any texture generator
   (`Compo`, `VideoInputTextureGenerator`...). An unnamed `Compo` shows as `Compo Compo` (`getFriendlyName()`), its label is empty.
+- **The file of a shared video (R15, 19/11/2026)**: `str(se.content.file.path.get())` when the `content` is a
+  `VideoFileTextureGenerator` (a `Compo` has no `file`: `AttributeError`, wrap it in a try). The `SharedElement`'s label is
+  often empty (displayed name = the file's). The path comes back in its stored form, e.g. relative to the project's folder
+  (`"Media/clip.mov"`): see "A path can also come back WITHOUT the Media Directory name".
+- The `Project` object (`script.project`) has no `filePath`, `path` or `file`: its path on disk cannot be read there.
 
 **Video inputs (R15, 12-13/11/2026)**
 - `VideoInputTextureGenerator`: `device` (`VideoInputDeviceSelector`: `deviceName`, a `String` such as `Video Input 1`; `address`,

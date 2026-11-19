@@ -1392,6 +1392,11 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
 - Un élément glissé à la main dans une compo bibliothèque est un `SharedElement(TextureGenerator)` dont le `content` peut être n'importe
   quel générateur de texture (`Compo`, `VideoInputTextureGenerator`...). Une `Compo` sans nom s'affiche `Compo Compo`
   (`getFriendlyName()`), son label est vide.
+- **Le fichier d'une vidéo partagée (R15, 19/11/2026)** : `str(se.content.file.path.get())` quand le `content` est un
+  `VideoFileTextureGenerator` (une `Compo` n'a pas de `file` : `AttributeError`, à entourer d'un try). Le label du
+  `SharedElement` est souvent vide (nom affiché = celui du fichier). Le chemin revient sous la forme stockée, par exemple
+  relatif au dossier du projet (`"Media/clip.mov"`) : voir « Un chemin peut aussi revenir SANS le nom du Media Directory ».
+- L'objet `Project` (`script.project`) n'a ni `filePath`, ni `path`, ni `file` : son chemin sur disque ne se lit pas par là.
 
 **Entrées vidéo (R15, 12-13/11/2026)**
 - `VideoInputTextureGenerator` : `device` (`VideoInputDeviceSelector` : `deviceName`, une `String` du type `Video Input 1` ; `address`,
