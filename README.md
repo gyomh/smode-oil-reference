@@ -754,6 +754,24 @@ of the viewport ~0.1 s apart while the timeline plays and lay them out in one co
 **Without taking the focus (R15, 12/11/2026)**: `PrintWindow(hwnd, hdc, 2)` (`PW_RENDERFULLCONTENT`) from PowerShell captures the Smode window even behind
 other windows, rendering included (verified on a 1920 x 1080 output window), about 250 ms per full-frame capture.
 
+**Capturing the picture of a generator (R15, 19/11/2026)**: no object reachable from Python reads the pixels of a texture
+back. `PngFreeImageFileExporter` (and the other `...FreeImageFileExporter`) only has its settings (`compression`,
+`exportAlpha`, `interlaced`); `TextureDownload` / `PixelToDmxDownload` exist in the DLLs but are not Oil types
+(`unknown Oil type name`); video export from Python is locked by the licence (see *Video export from a script*);
+`MakeContentScreenshotsTask` (`inputFile`, `outputFile`, `numFrames`, `intervalBetweenFrames`) renders PNGs from a content
+**file**, offline, not from a live element of the project.
+- **Do not call SMODE's web API live**: an `HttpServer` element added to the project's tools (`httpConfiguration.runServer`,
+  listening on 127.0.0.1:8080 by default), then requests on `/api/live/routes` and `/api/live/screenshot`, froze SMODE
+  ("Not Responding") for about 6 minutes, connections left in `CLOSE_WAIT`. Remove the element afterwards.
+- What works: `PrintWindow(hwnd, hdc, 2)` on the editor window (JUCE class, title "Smode"), from another process, the
+  viewer's render included, even behind other windows (1 to 2 s including PowerShell's start). The viewer is not a child
+  window (one HWND for the whole editor) and UIA coordinates are not reliable: the area is chosen by hand (a frame laid on
+  the frozen capture, kept in window pixels to be taken again). Output windows are separate HWNDs (class `OpenGL`, title
+  "Window"). Cut the capture to the visible frame (`DwmGetWindowAttribute` 9, `DWMWA_EXTENDED_FRAME_BOUNDS`): a maximised
+  window spills 8 px over.
+- `colorLabel.toString()` of an element without a label colour is `000000`. `Oil.createObject(className).getFriendlyName()`
+  gives the name shown for a class of generator ("Brick" for `BrickTextureGenerator`).
+
 ## Nested Scene (nested Scene layer)
 
 `Scene` is an Oil class in its own right (confirmed `getOilClassName() == "Scene"`), not just the
@@ -1471,6 +1489,8 @@ Verified while building a real-time datamosh: one `IsfFileTextureModifier` recei
 - **Shader written into a folder just made (R15, 19/11/2026)**: the modifier may stay several seconds in `liveStatus` "Could not find file
   ...fs" with no variables, although the file is on disk; it loads by itself in the end. 5 frames are not enough: wait for the
   `dynamicVariables` to appear (try again every frame), trigger `mod.file.reload.trig()` once after ~30 frames, give up after a few seconds.
+- **Input added to a shader in place (R15, 19/11/2026)**: rewrite the `.fs` with one more input, then `mod.file.reload.trig()`: the
+  new input shows up in `dynamicVariables` (at its `DEFAULT` value) and the others keep their values.
 - `TIMEDELTA`, `FRAMEINDEX`, `IMG_SIZE`, multiple passes and `PERSISTENT` work. The engine runs faster than the clip (60 Hz against 25 fps): to process each clip frame once,
   detect the change in a pass rather than rely on `FRAMEINDEX`.
 

@@ -590,6 +590,24 @@ Attention : si la fenêtre Smode est sur un autre écran avec d'autres fenêtres
 **Sans prendre le focus (R15, 12/11/2026)** : `PrintWindow(hwnd, hdc, 2)` (`PW_RENDERFULLCONTENT`) depuis PowerShell capture la fenêtre Smode même cachée
 derrière d'autres fenêtres, rendu compris (vérifié sur une fenêtre de sortie 1920 x 1080), environ 250 ms par capture plein cadre.
 
+**Capturer l'image d'un générateur (R15, 19/11/2026)** : aucun objet atteignable depuis Python ne relit les pixels d'une
+texture. `PngFreeImageFileExporter` (et les autres `...FreeImageFileExporter`) n'a que ses réglages (`compression`,
+`exportAlpha`, `interlaced`) ; `TextureDownload` / `PixelToDmxDownload` existent dans les DLL mais ne sont pas des types Oil
+(`unknown Oil type name`) ; l'export vidéo depuis Python est bloqué par la licence (voir *Export vidéo depuis un script*) ;
+`MakeContentScreenshotsTask` (`inputFile`, `outputFile`, `numFrames`, `intervalBetweenFrames`) rend des PNG depuis un
+**fichier** de contenu, hors ligne, pas depuis un élément vivant du projet.
+- **Ne pas appeler l'API web de SMODE en live** : un élément `HttpServer` ajouté aux outils du projet (`httpConfiguration.runServer`,
+  écoute par défaut sur 127.0.0.1:8080) puis des requêtes sur `/api/live/routes` et `/api/live/screenshot` ont figé SMODE
+  (« Ne répond pas ») environ 6 minutes, connexions restées en `CLOSE_WAIT`. Retirer l'élément ensuite.
+- Ce qui marche : `PrintWindow(hwnd, hdc, 2)` sur la fenêtre de l'éditeur (classe JUCE, titre « Smode »), depuis un autre
+  processus, rendu du viewer compris, même cachée derrière d'autres fenêtres (1 à 2 s avec le lancement de PowerShell). Le
+  viewer n'est pas une fenêtre enfant (une seule HWND pour tout l'éditeur) et les coordonnées UIA ne sont pas fiables : la
+  zone se choisit à la main (un cadre posé sur la capture figée, gardé en pixels de la fenêtre pour être repris). Les fenêtres
+  de sortie sont des HWND séparées (classe `OpenGL`, titre « Window »). Découper la capture au cadre visible
+  (`DwmGetWindowAttribute` 9, `DWMWA_EXTENDED_FRAME_BOUNDS`) : une fenêtre agrandie déborde de 8 px.
+- `colorLabel.toString()` d'un élément sans couleur d'étiquette vaut `000000`. `Oil.createObject(classe).getFriendlyName()`
+  donne le nom affiché d'une classe de générateur (« Brick » pour `BrickTextureGenerator`).
+
 ## Scene imbriquée (nested Scene layer)
 
 `Scene` est une classe Oil à part entière (confirmé `getOilClassName() == "Scene"`), pas juste le
@@ -1254,6 +1272,8 @@ Vérifié en construisant un datamosh temps réel : un `IsfFileTextureModifier` 
 - **Shader écrit dans un dossier tout juste créé (R15, 19/11/2026)** : le modifier peut rester plusieurs secondes en `liveStatus` « Could not find file
   ...fs » sans aucune variable, alors que le fichier est sur le disque ; il finit par se charger seul. 5 frames ne suffisent pas : attendre que les
   `dynamicVariables` apparaissent (réessayer à chaque frame), déclencher `mod.file.reload.trig()` une fois après ~30 frames, abandonner après quelques secondes.
+- **Entrée ajoutée à un shader en place (R15, 19/11/2026)** : réécrire le `.fs` avec une entrée de plus, puis `mod.file.reload.trig()` : la
+  nouvelle entrée apparaît dans `dynamicVariables` (avec sa valeur `DEFAULT`) et les autres gardent leurs valeurs.
 - `TIMEDELTA`, `FRAMEINDEX`, `IMG_SIZE`, passes multiples et `PERSISTENT` fonctionnent. Le moteur tourne plus vite que le clip (60 Hz contre 25 fps) : pour traiter
   chaque image du clip une seule fois, détecter le changement dans une passe plutôt que compter sur `FRAMEINDEX`.
 
