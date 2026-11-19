@@ -1435,6 +1435,20 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   de chaque image et juste après tout changement de structure (modifier recréé, élément ajouté), pour ne garder aucun objet Oil d'une
   image à l'autre ; et partie lente de l'état rafraîchie deux fois par seconde ou après une commande : retour à 0,4-0,6 ms.
 
+**Retirer un élément partagé d'une bibliothèque, mettre ses fichiers à la corbeille (R15, 19/11/2026)**
+- Un Script peut retirer un `SharedElement(TextureGenerator)` (vidéo partagée) de la Compo qui sert de bibliothèque avec
+  `sub.tools.removeAt(i)`, en parcourant les indices à l'envers, sans plantage. Conditions respectées : plus aucune entrée de shader ne le
+  référence (sinon l'entrée se retrouve vide, et une entrée image vide rend tout le shader ISF noir), et aucun objet Oil gardé d'une image
+  à l'autre (mémo par image vidé juste après le retrait). Pour retrouver l'élément, `sub.tools[i] == tool` marche.
+- Le lecteur de la vidéo lâche son fichier une fois l'élément retiré : environ 10 images plus tard, `SHFileOperationW` (`FO_DELETE`,
+  `FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOF_WANTNUKEWARNING`, par `ctypes`, dans un fil à part) met les fichiers
+  à la corbeille sans erreur de fichier ouvert. `FOF_WANTNUKEWARNING` fait demander Windows quand un fichier est trop gros pour la
+  corbeille, sinon il serait supprimé définitivement sans rien dire.
+- Taille de la Compo qui contient un Script : `int(float(compo.rasterizer.resolution.width.toString()))` (même chose pour `height`).
+- Un shader ISF lit ses entrées image en coordonnées normalisées (`IMG_NORM_PIXEL`) : une vidéo d'un autre format que la sortie (portrait
+  dans du 1920 x 1080) est étirée. Le plus simple est de la cadrer avant, à l'encodage
+  (`scale=W:H:force_original_aspect_ratio=decrease,pad=W:H:(ow-iw)/2:(oh-ih)/2:black,setsar=1` dans ffmpeg).
+
 ## Audio réactif
 
 `AudioSpectrumLinkSource` — classe native pour injecter en continu l'intensité d'une bande de

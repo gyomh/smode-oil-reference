@@ -1673,6 +1673,20 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   every frame and right after any structural change (modifier recreated, element added), so that no Oil object is kept from one frame to
   the next; and refresh the slow part of the state twice a second or after a command: back to 0.4-0.6 ms.
 
+**Removing a shared element from a library, sending its files to the recycle bin (R15, 19/11/2026)**
+- A Script can remove a `SharedElement(TextureGenerator)` (shared video) from the Compo used as a library with `sub.tools.removeAt(i)`,
+  walking the indices backwards, without a crash. Conditions kept: no shader input references it any more (otherwise the input ends up
+  empty, and an empty image input turns the whole ISF shader black), and no Oil object kept from one frame to the next (per-frame memo
+  dropped right after the removal). To find the element, `sub.tools[i] == tool` works.
+- The video's player lets go of its file once the element is removed: about 10 frames later, `SHFileOperationW` (`FO_DELETE`,
+  `FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOF_WANTNUKEWARNING`, through `ctypes`, in a separate thread) sends the
+  files to the recycle bin with no file-in-use error. `FOF_WANTNUKEWARNING` makes Windows ask when a file is too big for the bin;
+  without it the file would be deleted for good, silently.
+- Size of the Compo holding a Script: `int(float(compo.rasterizer.resolution.width.toString()))` (same for `height`).
+- An ISF shader reads its image inputs in normalised coordinates (`IMG_NORM_PIXEL`): a video of another shape than the output (portrait in
+  1920 x 1080) is stretched. The simplest fix is to fit it beforehand, at encoding time
+  (`scale=W:H:force_original_aspect_ratio=decrease,pad=W:H:(ow-iw)/2:(oh-ih)/2:black,setsar=1` in ffmpeg).
+
 ## Audio reactive
 
 `AudioSpectrumLinkSource` — native class to continuously inject the intensity of a frequency band
