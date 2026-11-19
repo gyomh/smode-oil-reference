@@ -1625,6 +1625,10 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   `VideoFileTextureGenerator` (a `Compo` has no `file`: `AttributeError`, wrap it in a try). The `SharedElement`'s label is
   often empty (displayed name = the file's). The path comes back in its stored form, e.g. relative to the project's folder
   (`"Media/clip.mov"`): see "A path can also come back WITHOUT the Media Directory name".
+- **Modifiers of a shared texture (R15, 19/11/2026)**: a modifier added in Smode's UI on a `SharedElement(TextureGenerator)` goes to
+  `se.content.modifiers` (the modifier vector of the generator it holds: video, image, `Compo`). It acts on every
+  `ReferenceTextureGenerator` that points at it, at once. A modifier on a reference (`layer.generator.modifiers` of the referencing
+  layer) acts on that place only. Read / `append` / `removeAt` on `se.content.modifiers` work like on a layer's generator.
 - The `Project` object (`script.project`) has no `filePath`, `path` or `file`: its path on disk cannot be read there.
 
 **Video inputs (R15, 12-13/11/2026)**

@@ -1396,6 +1396,11 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   `VideoFileTextureGenerator` (une `Compo` n'a pas de `file` : `AttributeError`, à entourer d'un try). Le label du
   `SharedElement` est souvent vide (nom affiché = celui du fichier). Le chemin revient sous la forme stockée, par exemple
   relatif au dossier du projet (`"Media/clip.mov"`) : voir « Un chemin peut aussi revenir SANS le nom du Media Directory ».
+- **Les modifiers d'une texture partagée (R15, 19/11/2026)** : un modifier ajouté dans l'interface de Smode sur un
+  `SharedElement(TextureGenerator)` va dans `se.content.modifiers` (le vecteur de modifiers du générateur qu'il contient : vidéo,
+  image, `Compo`). Il agit d'un coup sur chaque `ReferenceTextureGenerator` qui pointe vers lui. Un modifier sur une référence
+  (`layer.generator.modifiers` du calque qui référence) n'agit que sur cette place. Lecture / `append` / `removeAt` sur
+  `se.content.modifiers` marchent comme sur le générateur d'un calque.
 - L'objet `Project` (`script.project`) n'a ni `filePath`, ni `path`, ni `file` : son chemin sur disque ne se lit pas par là.
 
 **Entrées vidéo (R15, 12-13/11/2026)**
