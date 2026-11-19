@@ -1400,6 +1400,10 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   (`internalIndirect`), `referencer.address.elementPointer.set(se.getVariableByName("content"))`, `referencer.shared.set(True)`.
 - La vidéo derrière une référence : `ref.referencer.address.target.get()`. Rebrancher une référence sur un autre élément : refaire
   `elementPointer.set(...)`. `ref.clone()` donne une copie dont la cible est vide tant qu'elle n'est pas rebranchée.
+- **Remplacer le contenu d'un `SharedElement` (R15, 19/11/2026)** : `se.content = autre` (par ex. une `Compo` qui contient une copie
+  de l'ancienne vidéo : `layer.generator = se.content.clone()` d'abord, l'original appartenant au `SharedElement`). Toute référence
+  dont l'`elementPointer` est `se.getVariableByName("content")` montre aussitôt le nouveau contenu, rien à rebrancher. La vidéo
+  copiée démarre à l'arrêt : relancer `transport.reset` / `transport.play`.
 - **Une vidéo partagée que rien ne référence ne joue pas** (sa position reste à 0, aucune charge mesurée) : une bibliothèque de clips partagés ne
   coûte que les clips branchés. Deux références au même élément partagent un seul décodage et un seul transport.
 - Une entrée image d'un modifier ISF accepte une référence ; le code qui lisait `entrée.file` ou `entrée.transport` doit passer par `target`.

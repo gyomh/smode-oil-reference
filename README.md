@@ -1630,6 +1630,10 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   name is the file's. Reference: `Oil.createObject("ReferenceTextureGenerator")`, `referencer.address.location.set(0)` (`internalIndirect`),
   `referencer.address.elementPointer.set(se.getVariableByName("content"))`, `referencer.shared.set(True)`.
 - The video behind a reference: `ref.referencer.address.target.get()`. Point a reference at another element: `elementPointer.set(...)` again.
+- **Replacing a `SharedElement`'s content (R15, 19/11/2026)**: `se.content = other` (e.g. a `Compo` holding a copy of the old video:
+  `layer.generator = se.content.clone()` first, the original being owned by the `SharedElement`). Every reference whose
+  `elementPointer` is `se.getVariableByName("content")` shows the new content at once, nothing to re-point. The copied video starts
+  still: trigger `transport.reset` / `transport.play` again.
   `ref.clone()` gives a copy whose target is empty until it is pointed again.
 - **A shared video that nothing references does not play** (its position stays at 0, no load measured): a library of shared clips only costs the
   clips in use. Two references to the same element share one decode and one transport.
