@@ -1428,6 +1428,11 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   image, `Compo`). Il agit d'un coup sur chaque `ReferenceTextureGenerator` qui pointe vers lui. Un modifier sur une référence
   (`layer.generator.modifiers` du calque qui référence) n'agit que sur cette place. Lecture / `append` / `removeAt` sur
   `se.content.modifiers` marchent comme sur le générateur d'un calque.
+- **Un `SharedElement` peut vivre dans les `tools` de n'importe quelle Compo, imbriquée n'importe où (R15, 19/11/2026)**, pas
+  seulement dans ceux du Show : un `ReferenceTextureGenerator` ailleurs dans le projet (une autre Compo, une entrée image d'un ISF)
+  joue toujours son contenu. Les calques qui le référencent dans cette Compo peuvent être éteints (`activation` inactive) : le
+  contenu partagé continue de jouer pour les autres références. Un calque dont la Compo n'a que des `tools` (aucun calque) ne
+  dessine rien (transparent) : une Compo bibliothèque peut rester active.
 - L'objet `Project` (`script.project`) n'a ni `filePath`, ni `path`, ni `file` : son chemin sur disque ne se lit pas par là.
 
 **Entrées vidéo (R15, 12-13/11/2026)**

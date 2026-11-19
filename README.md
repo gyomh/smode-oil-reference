@@ -1656,6 +1656,10 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   `se.content.modifiers` (the modifier vector of the generator it holds: video, image, `Compo`). It acts on every
   `ReferenceTextureGenerator` that points at it, at once. A modifier on a reference (`layer.generator.modifiers` of the referencing
   layer) acts on that place only. Read / `append` / `removeAt` on `se.content.modifiers` work like on a layer's generator.
+- **A `SharedElement` can live in the `tools` of any Compo, nested anywhere (R15, 19/11/2026)**, not only in the Show's: a
+  `ReferenceTextureGenerator` elsewhere in the project (another Compo, an ISF image input) still plays its content. The layers that
+  reference it inside that Compo can be switched off (`activation` inactive): the shared content keeps playing for the other
+  references. A layer whose Compo holds only `tools` (no layers) draws nothing (transparent): a library Compo can stay active.
 - The `Project` object (`script.project`) has no `filePath`, `path` or `file`: its path on disk cannot be read there.
 
 **Video inputs (R15, 12-13/11/2026)**
