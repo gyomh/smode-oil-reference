@@ -2555,6 +2555,10 @@ A fifth crash (R15, 08/10/2026), triggered through the MCP bridge:
    `masterScene.tools`, during the Scripts' execution loop.
 Rule: set the Script to Manual (`launchMode.set(0)`) in one call, and remove it only in a later call (removing
 Manual Scripts never caused trouble).
+Same crash, indirect (R15, 19/11/2026): a Script removing a `TextureLayer` whose `Compo` holds, in its `tools`, a Script
+At Every Update (a plugin living in its own Compo) crashed SMODE the same way. Before removing any element, look for the
+Scripts inside it (its `tools`, its `Compo`'s `tools`, its layers, recursively), set them to Manual, and remove the
+element a few frames later (verified: no crash).
 
 A sixth crash (R15, 11/10/2026), through the MCP bridge:
 6. A loop over the bridge's `globals()` calling `getOilClassName()` on every value → `ACCESS_VIOLATION` in

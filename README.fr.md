@@ -2324,6 +2324,10 @@ Un cinquième crash (R15, 08/10/2026), provoqué via le pont MCP :
    `masterScene.tools`, pendant la boucle d'exécution des Scripts.
 Règle : passer le Script en Manual (`launchMode.set(0)`) dans un appel, ne le retirer que dans un appel suivant
 (retirer des Scripts en Manual n'a jamais posé de problème).
+Même crash, de façon indirecte (R15, 19/11/2026) : un Script qui retire un `TextureLayer` dont la `Compo` contient, dans
+ses `tools`, un Script At Every Update (un plugin qui vit dans sa propre Compo) a planté SMODE de la même façon. Avant de
+retirer un élément, chercher les Scripts qu'il contient (ses `tools`, ceux de sa `Compo`, ses calques, récursivement), les
+passer en Manual, et retirer l'élément quelques images plus tard (vérifié : plus de crash).
 
 Un sixième crash (R15, 11/10/2026), via le pont MCP :
 6. Une boucle sur les `globals()` du pont appelant `getOilClassName()` sur chaque valeur → `ACCESS_VIOLATION`
