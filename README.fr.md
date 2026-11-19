@@ -1247,6 +1247,10 @@ Vérifié en construisant un datamosh temps réel : un `IsfFileTextureModifier` 
 - `Percentage` : `set(0.35)` mais `toString()` renvoie `35.000` (diviser par 100 à la relecture). `CustomEnumeration` : `set("Motion First")` par le texte du menu,
   `toString()` renvoie ce texte, `.enumerators` liste les `CustomEnumerator` (`label`, `value`).
 - Réinstaller le modifier (`removeAt` + nouvel objet) détruit ses liens : les refaire, quelques frames plus tard, le temps que les variables existent.
+- **Taille de référence du projet (R15, 19/11/2026)** : une `Scene` (le Show compris) n'a pas de `rasterizer` (`AttributeError`). La taille se lit
+  sur la Content Map : `project.pipeline.contentMaps[0].rasterizer.resolution` (ou `.rootArea.resolution`), `width` / `height` (1920 x 1080).
+  Une `Compo` en résolution héritée (`preset` « inheritedResolution », lue 0 x 0) mise dans un `SharedElement(TextureGenerator)` n'a plus rien
+  dont hériter : « Empty resolution ». Lui donner une taille : `res.preset.set(40)` (custom), `res.linked.set(False)`, `width` / `height`.
 - **Shader écrit dans un dossier tout juste créé (R15, 19/11/2026)** : le modifier peut rester plusieurs secondes en `liveStatus` « Could not find file
   ...fs » sans aucune variable, alors que le fichier est sur le disque ; il finit par se charger seul. 5 frames ne suffisent pas : attendre que les
   `dynamicVariables` apparaissent (réessayer à chaque frame), déclencher `mod.file.reload.trig()` une fois après ~30 frames, abandonner après quelques secondes.
@@ -1293,7 +1297,7 @@ rester immobile (`ready`) et ce qui la lit saccade jusqu'à une relance à la ma
   sa position dans la mesure.
 - Autres propriétés du `TempoTool` : `beatsPerMeasure` (longueur de la mesure, donc de `positionInMeasure`), `speedMultiplier`, `beatDuration` (ms), `positionInBeat`,
   `beatCount`, `tapCount`, `timeValue`. `positionInMeasure.toString()` renvoie un pourcentage (`34.667`).
-- **Un tempo pour plusieurs effets (vérifié)** : un `TempoTool` créé par script dans les outils de la Show
+- **Un tempo pour plusieurs effets (vérifié)** : un `TempoTool` créé par script dans les outils du Show
   (`masterScene.tools`, atteinte depuis un Script en remontant jusqu'à la `Scene` la plus haute), retrouvé par son label par
   chaque Script, son `positionInMeasure` lié au shader de chaque effet : un `tap`, un `tempo` ou un `resync` venu de n'importe
   lequel les fait tous bouger, en phase. Refaire le `Link` d'un effet quand il passe sur un autre `TempoTool`.
@@ -1343,7 +1347,7 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   texture (`IsfFileTextureModifier`, `BlurV8TextureModifier`), `v[k].get() is obj` est vrai. Déclarée comme paramètre d'un Script, une
   telle liste est enregistrée avec le projet : **vérifié après sauvegarde + réouverture** (17/11/2026) pour un `SharedElement`, un
   `TextureLayer` et un `BlurV8TextureModifier` rangé 9 niveaux plus bas (chaque pointeur désigne l'élément vivant du projet rouvert,
-  ses parents jusqu'à la Show). Le moyen de retrouver les mêmes éléments après un redémarrage, même renommés ou déplacés (la liste
+  ses parents jusqu'au Show). Le moyen de retrouver les mêmes éléments après un redémarrage, même renommés ou déplacés (la liste
   n'existe qu'une fois le projet sauvegardé). Retirer le Script d'un tel test : `project.tools.removeAt(i)`.
 - **L'adresse d'un objet, lisible par un pointeur (17/11/2026)** : `str()` d'un `WeakPointer` / `directPointer` donne l'adresse de la
   cible `@space/<uuid>` (ex. `str(ref.referencer.address.directPointer)` sur un `ReferenceGeometryLayerUser`) : stable et unique, la clé
@@ -1638,7 +1642,7 @@ pas seulement le script lui-même.
   même exécution ; relire l'objet depuis son vecteur après `append` (`compo.layers[len(compo.layers) - 1].generator`).
 - Une liste `OwnedVector(WeakPointer(Element))` d'un Script peut être remplie par un autre Script (vider avec `removeAt`, puis
   `append(Oil.createObject("WeakPointer(Element)"))` et `.set(SharedElement)`) : le Script propriétaire lit `vec[k].get()`.
-  Une `ReferenceTextureGenerator` (entrée image d'un modifier ISF) peut pointer vers un `SharedElement` des outils de la Show
+  Une `ReferenceTextureGenerator` (entrée image d'un modifier ISF) peut pointer vers un `SharedElement` des outils du Show
   depuis une Compo imbriquée : `elementPointer.set(se.getVariableByName("content"))`.
 
 ### Recharger un script / vider le cache Python — confirmé R15 (06/10/2026)

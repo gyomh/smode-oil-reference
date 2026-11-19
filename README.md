@@ -1464,6 +1464,10 @@ Verified while building a real-time datamosh: one `IsfFileTextureModifier` recei
 - `Percentage`: `set(0.35)` but `toString()` returns `35.000` (divide by 100 when reading). `CustomEnumeration`: `set("Motion First")` by menu text, `toString()` returns that text,
   `.enumerators` lists the `CustomEnumerator` objects (`label`, `value`).
 - Reinstalling the modifier (`removeAt` + new object) destroys its links: rebuild them a few frames later, once the variables exist.
+- **Reference size of the project (R15, 19/11/2026)**: a `Scene` (the Show included) has no `rasterizer` (`AttributeError`). Read the size
+  on the Content Map: `project.pipeline.contentMaps[0].rasterizer.resolution` (or `.rootArea.resolution`), `width` / `height` (1920 x 1080).
+  A `Compo` with an inherited resolution (`preset` "inheritedResolution", read 0 x 0) put into a `SharedElement(TextureGenerator)` has nothing
+  left to inherit from: "Empty resolution". Give it a size: `res.preset.set(40)` (custom), `res.linked.set(False)`, `width` / `height`.
 - **Shader written into a folder just made (R15, 19/11/2026)**: the modifier may stay several seconds in `liveStatus` "Could not find file
   ...fs" with no variables, although the file is on disk; it loads by itself in the end. 5 frames are not enough: wait for the
   `dynamicVariables` to appear (try again every frame), trigger `mod.file.reload.trig()` once after ~30 frames, give up after a few seconds.
