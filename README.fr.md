@@ -2362,6 +2362,15 @@ Un huitième crash (R15, 13/11/2026), via le pont MCP :
    (dernière sauvegarde). Règle : ne pas remplacer par script l'objet d'une entrée image d'un shader en direct pour tester quelque
    chose ; changer des valeurs, ou passer par la réinstallation prévue.
 
+Un neuvième crash (R15, 20/11/2026), via le pont MCP :
+9. Lire, depuis le pont, les wrappers Oil qu'un autre Script garde dans son propre état (un dict de module
+   `{"obj": calque, ...}` partagé par un global) : `el["obj"]`, puis sa `Compo`, `.layers` et des comparaisons `is`.
+   L'appel a échoué et Smode a redémarré quelques secondes après. Le cache d'un Script peut garder des wrappers d'objets
+   retirés depuis (voir le crash 6), et le pont tourne pendant les mises à jour de ce Script. Règle : ne jamais parcourir
+   depuis le pont les objets Oil mis en cache par un autre Script ; interroger ce Script (son propre endpoint, son journal)
+   ou lire directement l'arbre du projet. Un Script dont le `sourceCode` a été remplacé sans que le document soit
+   enregistré revient avec son ancien code après le crash.
+
 Après un plantage, Smode peut **rouvrir une vieille sauvegarde** : les sauvegardes automatiques sont dans
 `Documents\Smode Files\<projet>.project\.versions` (toutes les 5 min) ; une recherche de texte dans
 le fichier (`IconFleche`, nom d'un objet) dit laquelle contient le travail voulu.

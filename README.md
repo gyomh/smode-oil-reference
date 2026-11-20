@@ -2602,6 +2602,14 @@ An eighth crash (R15, 13/11/2026), through the MCP bridge:
    (last save). Rule: do not swap the object of an image input of a live shader by script to test something; change
    values, or go through the planned reinstall.
 
+A ninth crash (R15, 20/11/2026), through the MCP bridge:
+9. Reading, from the bridge, the Oil wrappers another Script keeps in its own state (a module-level dict of
+   `{"obj": layer, ...}` entries, shared through a global): `el["obj"]`, then its `Compo`, `.layers` and `is` comparisons.
+   The call failed and Smode restarted a few seconds later. A Script's cache can hold wrappers of objects removed
+   since (see crash 6), and the bridge runs during that Script's own updates. Rule: never walk another Script's cached
+   Oil objects from the bridge; ask that Script (its own endpoint, its own log), or read the project tree directly.
+   A Script whose `sourceCode` was replaced but whose document was not saved comes back with its old code after the crash.
+
 After a crash, Smode may **reopen an old save**: the automatic saves are in
 `Documents\Smode Files\<project>.project\.versions` (every 5 min); a text search in the file
 (`IconFleche`, the name of an object) tells which one holds the wanted work.
