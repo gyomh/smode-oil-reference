@@ -1673,6 +1673,10 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   `VideoFileTextureGenerator` (a `Compo` has no `file`: `AttributeError`, wrap it in a try). The `SharedElement`'s label is
   often empty (displayed name = the file's). The path comes back in its stored form, e.g. relative to the project's folder
   (`"Media/clip.mov"`): see "A path can also come back WITHOUT the Media Directory name".
+- **Three labels for one shared texture (R15, 20/11/2026)**: the `SharedElement`, its `content` (e.g. a `Compo`) and each layer
+  whose `ReferenceTextureGenerator` points at it each have their own `label`. Renaming one never renames the others: a tool
+  that renames the referencing layer and the `Compo` leaves the `SharedElement` with the name it was created with. To show the
+  name of a shared clip, read `se.content.label` first and fall back on `se.label`, or rename the `SharedElement` too.
 - **Modifiers of a shared texture (R15, 19/11/2026)**: a modifier added in Smode's UI on a `SharedElement(TextureGenerator)` goes to
   `se.content.modifiers` (the modifier vector of the generator it holds: video, image, `Compo`). It acts on every
   `ReferenceTextureGenerator` that points at it, at once. A modifier on a reference (`layer.generator.modifiers` of the referencing
