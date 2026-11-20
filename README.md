@@ -303,6 +303,11 @@ direct UI interaction (re-selection in the dropdown) seems to do it. Current wor
 script can prepare/wire the value (useful for bulk wiring), but a manual pass in the UI is still
 needed to really activate each target. No alternative method found so far (no triggering
 `.trig()`/`.refresh()` identified on `ContentMap`, `TextureLayer`, or `SingleTextureRenderer`).
+**Update (R15, 20/11/2026): `renderer.target.set(cm.rootArea)` renders at once.** A `TextureLayer` appended to the Show by
+script drew nothing (status bar: `<layer> → Single Target is not specified`) until
+`layer.renderer.target.set(script.project.pipeline.contentMaps[0].rootArea)`: the viewport showed it on the next frame, no
+UI pass. `layer.renderer.target.set(otherLayer.renderer.target.get())` left the target empty (`toString()` `''`): pass the
+`ContentArea` itself. `frameProfileRendered` reads `false` on layers that are on screen: not a sign of rendering.
 
 **Linking a ContentMap to a VideoOutput**: `VideoOutput.source` is a `PipelineSourceWeakPointer`
 that refuses a `ContentMap` directly (Smode error, UI popup:
@@ -1637,6 +1642,18 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   `ref.clone()` gives a copy whose target is empty until it is pointed again.
 - **A shared video that nothing references does not play** (its position stays at 0, no load measured): a library of shared clips only costs the
   clips in use. Two references to the same element share one decode and one transport.
+  Nuance (R15, 20/11/2026): a shared video with a `StandalonePlayer` told to `play` advances even when nothing references it:
+  its position is no proof that something shows it (check on screen).
+- **A video made by script has no player (R15, 20/11/2026)**: `VideoFileTextureGenerator.transport.player` is `None`,
+  `transport.play.trig()` puts `state` at `playing` yet the position stays `0:00:00:00`. Give it one:
+  `video.transport.player = Oil.createObject("StandalonePlayer")` (`parameters.looping`, `parameters.launchMode`); after that
+  the state is `ready` until `transport.play.trig()` again.
+- **A shared element can hold a reference to another one: a stable "output" (R15, 20/11/2026)**. `out =
+  SharedElement(TextureGenerator)` whose `content` is a `ReferenceTextureGenerator` to a library element `src`; a layer
+  elsewhere references `out`: it shows `src` (verified on screen). Re-pointing only the inner reference
+  (`out.content.referencer.address.elementPointer.set(other.getVariableByName("content"))`) switches, on the next frame,
+  every layer that references `out`, without touching them. A fixed element that follows whatever a script chooses (the
+  slot of a player, a deck), usable by hand from anywhere in the project.
 - An image input of an ISF modifier accepts a reference; code that read `input.file` or `input.transport` must go through `target`.
 - `ref.referencer.address.target.get()` returns the same Python object as `sharedElement.content` (`is` works): it tells which
   library element a reference shows, whatever its class (video, `Compo`, `VideoInputTextureGenerator`).

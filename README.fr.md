@@ -304,6 +304,11 @@ actuel : le script peut préparer/câbler la valeur (utile pour du câblage en m
 manuel dans l'UI reste nécessaire pour activer réellement chaque target. Aucune méthode
 alternative trouvée à ce jour (pas de `.trig()`/`.refresh()` déclencheur identifié sur
 `ContentMap`, `TextureLayer`, ou `SingleTextureRenderer`).
+**Mise à jour (R15, 20/11/2026) : `renderer.target.set(cm.rootArea)` rend tout de suite.** Un `TextureLayer` ajouté au Show
+par script ne dessinait rien (barre d'état : `<calque> → Single Target is not specified`) jusqu'à
+`layer.renderer.target.set(script.project.pipeline.contentMaps[0].rootArea)` : le viewport l'a montré à l'image suivante, sans
+passage dans l'interface. `layer.renderer.target.set(autreCalque.renderer.target.get())` a laissé la cible vide (`toString()`
+`''`) : passer la `ContentArea` elle-même. `frameProfileRendered` lit `false` sur des calques à l'écran : pas un signe de rendu.
 
 **Relier une ContentMap à un VideoOutput** : `VideoOutput.source` est un `PipelineSourceWeakPointer`
 qui refuse une `ContentMap` directement (erreur Smode, popup UI :
@@ -1406,6 +1411,18 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   copiée démarre à l'arrêt : relancer `transport.reset` / `transport.play`.
 - **Une vidéo partagée que rien ne référence ne joue pas** (sa position reste à 0, aucune charge mesurée) : une bibliothèque de clips partagés ne
   coûte que les clips branchés. Deux références au même élément partagent un seul décodage et un seul transport.
+  Nuance (R15, 20/11/2026) : une vidéo partagée dotée d'un `StandalonePlayer` à qui on a dit `play` avance même si rien ne la
+  référence : sa position ne prouve pas que quelque chose l'affiche (vérifier à l'écran).
+- **Une vidéo créée par script n'a pas de lecteur (R15, 20/11/2026)** : `VideoFileTextureGenerator.transport.player` vaut `None`,
+  `transport.play.trig()` met `state` à `playing` mais la position reste à `0:00:00:00`. Lui en donner un :
+  `video.transport.player = Oil.createObject("StandalonePlayer")` (`parameters.looping`, `parameters.launchMode`) ; ensuite
+  l'état est `ready` jusqu'à un nouveau `transport.play.trig()`.
+- **Un élément partagé peut contenir une référence vers un autre : une « sortie » stable (R15, 20/11/2026)**. `sortie =
+  SharedElement(TextureGenerator)` dont le `content` est une `ReferenceTextureGenerator` vers un élément `src` de la
+  bibliothèque ; un calque ailleurs référence `sortie` : il montre `src` (vérifié à l'écran). Rebrancher seulement la
+  référence intérieure (`sortie.content.referencer.address.elementPointer.set(autre.getVariableByName("content"))`) bascule,
+  dès l'image suivante, chaque calque qui référence `sortie`, sans y toucher. Un élément fixe qui suit ce qu'un script choisit
+  (le slot d'un lecteur, un deck), utilisable à la main de n'importe où dans le projet.
 - Une entrée image d'un modifier ISF accepte une référence ; le code qui lisait `entrée.file` ou `entrée.transport` doit passer par `target`.
 - `ref.referencer.address.target.get()` renvoie le même objet Python que `sharedElement.content` (`is` marche) : on sait quel élément de
   la bibliothèque une référence montre, quelle que soit sa classe (vidéo, `Compo`, `VideoInputTextureGenerator`).
