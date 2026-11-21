@@ -2262,6 +2262,10 @@ et le réécrit depuis un éditeur de nodes externe.
   `linearBurn`, `darkerColor`, `lighten`, `screen`, `colorDodge`, `linearDodge`, `lighterColor`, `overlay`, `softLight`,
   `hardLight`, `vividLight`, `linearLight`, `pinLight`, `hardMix`, `difference`, `exclusion`, `subtract`, `divide`, `hue`,
   `saturation`, `color`, `luminosity`, `alpha` (vérifié : 0 passThrough, 2 normal, 5 multiply, 10 screen, 29 alpha).
+- **Une `Scene` en `passThrough` n'applique pas ses propres modifiers** (`scene.modifiers`) : ils restent dans l'arbre
+  sans effet à l'image. Le Show (`project.masterScene`) peut être en `passThrough` (vu ainsi sur un projet) : un outil qui pose un modifier
+  sur la Scene entière la passe d'abord en `normal` (`blendingMode.set(2)`) (R15, 21/11/2026). Un calque de Compo
+  (`TextureLayer` + `Compo`) était en `normal` sur ce même projet.
 - **Calque vidéo par script** : `TextureLayer` + `VideoFileTextureGenerator` (`file.path`), `transport.player =
   StandalonePlayer()` avec `parameters.looping` ; `transport.play.trig()` quelques images après que le calque est dans
   l'arbre (état ensuite `playing`, `transport.position` en secondes).
@@ -2349,6 +2353,11 @@ Même crash, de façon indirecte (R15, 19/11/2026) : un Script qui retire un `Te
 ses `tools`, un Script At Every Update (un plugin qui vit dans sa propre Compo) a planté SMODE de la même façon. Avant de
 retirer un élément, chercher les Scripts qu'il contient (ses `tools`, ceux de sa `Compo`, ses calques, récursivement), les
 passer en Manual, et retirer l'élément quelques images plus tard (vérifié : plus de crash).
+Autre variante (R15, 21/11/2026) : un Script passé en Manual, et **dans la même image** les objets qu'il avait construits
+retirés de sa Compo (un `IsfFileTextureModifier` de `modifiers`, puis un `LinkBank` avec un `AudioSpectrumLinkSource`, un
+`ParameterBank` et un `TempoTool` de `tools`) → `ACCESS_VIOLATION` dans `api-Oil.dll` ~230 ms plus tard, sur un thread du
+pool de travail d'Oil (aucun Python sur sa pile), à la 3e suppression (les deux premières passaient). Cause exacte non
+prouvée. Mesure prise : lire tout de suite, retirer ces objets quelques images APRÈS le retrait du Script (à vérifier).
 
 Un sixième crash (R15, 11/10/2026), via le pont MCP :
 6. Une boucle sur les `globals()` du pont appelant `getOilClassName()` sur chaque valeur → `ACCESS_VIOLATION`

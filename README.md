@@ -2490,6 +2490,10 @@ and writes it back from an external node editor.
   `linearBurn`, `darkerColor`, `lighten`, `screen`, `colorDodge`, `linearDodge`, `lighterColor`, `overlay`, `softLight`,
   `hardLight`, `vividLight`, `linearLight`, `pinLight`, `hardMix`, `difference`, `exclusion`, `subtract`, `divide`, `hue`,
   `saturation`, `color`, `luminosity`, `alpha` (checked: 0 passThrough, 2 normal, 5 multiply, 10 screen, 29 alpha).
+- **A `Scene` in `passThrough` does not apply its own modifiers** (`scene.modifiers`): they stay in the tree with no
+  effect on the picture. The Show (`project.masterScene`) may be `passThrough` (seen so on a project): a tool that puts a modifier on
+  the whole Scene first sets it to `normal` (`blendingMode.set(2)`) (R15, 21/11/2026). A Compo layer (`TextureLayer` +
+  `Compo`) was `normal` on the same project.
 - **Video layer by script**: `TextureLayer` + `VideoFileTextureGenerator` (`file.path`), `transport.player =
   StandalonePlayer()` with `parameters.looping`; `transport.play.trig()` a few frames after the layer is in the tree
   (state then `playing`, `transport.position` in seconds).
@@ -2580,6 +2584,11 @@ Same crash, indirect (R15, 19/11/2026): a Script removing a `TextureLayer` whose
 At Every Update (a plugin living in its own Compo) crashed SMODE the same way. Before removing any element, look for the
 Scripts inside it (its `tools`, its `Compo`'s `tools`, its layers, recursively), set them to Manual, and remove the
 element a few frames later (verified: no crash).
+Another variant (R15, 21/11/2026): a Script set to Manual and, **in the same frame**, the objects it had built removed
+from its Compo (an `IsfFileTextureModifier` from `modifiers`, then a `LinkBank` holding an `AudioSpectrumLinkSource`, a
+`ParameterBank` and a `TempoTool` from `tools`) → `ACCESS_VIOLATION` in `api-Oil.dll` ~230 ms later, on a thread of
+Oil's worker pool (no Python on its stack), on the 3rd removal (the first two went through). Exact cause not proven.
+Measure taken: read at once, remove those objects a few frames AFTER the Script's removal (to be checked).
 
 A sixth crash (R15, 11/10/2026), through the MCP bridge:
 6. A loop over the bridge's `globals()` calling `getOilClassName()` on every value → `ACCESS_VIOLATION` in
