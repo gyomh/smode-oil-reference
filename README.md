@@ -2261,6 +2261,13 @@ Windows that lets a **second server bind the same port**: the old one, whose sta
   start" never fires again). To react to a Script restart (project reopened, Script added, set back to At Every
   Update), store the time on each run: a gap of more than a few seconds = restart. At that point, forget cached Oil
   references (they belong to the old project).
+- **Rebuilt Script (checked R15, 22/11/2026)**: when a tool sends a Script's code again (new `PythonScriptTool`
+  object, other `id()`), the Python state kept for the old one stays alive: its threads go on and its UDP socket stays
+  bound. An exclusive `bind` (`SO_EXCLUSIVEADDRUSE`) by the new one then fails silently (message in the console only)
+  and it receives nothing. Fix: each state notes the time of its last frame; the new one takes over the socket object
+  of a state that stopped running (no frame for 1 s) as it is, and tries the `bind` again every frame. A
+  `Parameter(Trigger)` with a `SetConstantLinkModifier` (True) towards an `Oil.Boolean` of another Script, which that
+  Script sets back to False after reading it, does give one event per hit (in real use).
 - **Execution counter**: `tool.script.numExecutions.get()` counts the runs of this Script instance (one per frame in
   At Every Update, ~47/s measured).
 - **POST-only API**: a foreign web page can trigger a GET without an `Origin` header (`<img src="http://127.0.0.1:...">`);

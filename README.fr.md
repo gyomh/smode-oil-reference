@@ -2020,6 +2020,13 @@ du dict d'état.
   serveur » ne se redéclenche donc pas). Pour réagir à un redémarrage du Script (projet rouvert, Script ajouté, repassé
   en At Every Update), noter l'heure à chaque exécution : un trou de plus de quelques secondes = redémarrage. À ce
   moment, oublier les références Oil gardées en cache (elles appartiennent à l'ancien projet).
+- **Script reconstruit (vérifié R15, 22/11/2026)** : quand un outil renvoie le code d'un Script (nouvel objet
+  `PythonScriptTool`, autre `id()`), l'état Python gardé pour l'ancien reste vivant : ses threads continuent et sa
+  socket UDP reste liée. Un `bind` exclusif (`SO_EXCLUSIVEADDRUSE`) du nouveau échoue alors sans bruit (message seulement
+  dans la console) et il ne reçoit plus rien. Parade : chaque état note l'heure de sa dernière image ; le nouveau
+  reprend tel quel l'objet socket d'un état qui ne tourne plus (plus d'image depuis 1 s), et réessaie le `bind` à chaque
+  image. Un `Parameter(Trigger)` avec `SetConstantLinkModifier` (True) vers un `Oil.Boolean` d'un autre Script, que ce
+  Script remet à False après lecture, donne bien un événement par frappe (en usage réel).
 - **Compteur d'exécutions** : `tool.script.numExecutions.get()` compte les exécutions de cette instance du Script
   (une par frame en At Every Update, ~47/s mesuré).
 - **API en POST uniquement** : une page web étrangère peut déclencher un GET sans en-tête `Origin`
