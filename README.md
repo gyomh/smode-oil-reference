@@ -612,7 +612,8 @@ rather than fixing the existing objects in place.
   button needs two clicks: the Script resets the button but the parameter keeps its state, so the next click pushes
   a value the button already has. A bank Trigger fires from Python with `p.value.trig()`.
   Built by script (R15, 17/11/2026): SMODE does not add the modifier itself, append it to the **parameter**
-  (`p.modifiers.append(Oil.createObject("SetConstantLinkModifier"))`; a `ParameterLinkTarget` has no `modifiers`). Its
+  (`p.modifiers.append(Oil.createObject("SetConstantLinkModifier"))`; a `ParameterLinkTarget` has its own `modifiers` too,
+  see *Parameter banks linked to a Script*). Its
   `value` is an `ObjectOwnedPointer`, `None` until given an object: `v = Oil.createObject("Boolean"); v.set(True);
   m.getVariableByName("value").set(v)`. Link target = the Script's setting itself (`target.target.set(tool.mySetting)`).
   **Trap**: making the link (or relinking it) pushes the constant True into the target at once, as if clicked: a Script
@@ -747,6 +748,17 @@ rather than fixing the existing objects in place.
   `Parameter(Trigger)` fire (`value.trig()`); `removeAt` and `label.set` work too. Handy to test the code of a Script that
   builds a bank (give it a fake `tool` whose `parentElement` is that Compo) without adding anything to the open project.
   `Percentage`: `set(0.58)`, `toString()` reads back `58.000`.
+  **Links do not run there**: in such a Compo, a `Parameter` linked (`ParameterLinkTarget`, with or without link modifiers)
+  to another Parameter of the same bank does not pass its value on, even several calls later (target stayed at 0). Test a
+  link inside the project (it can only be removed by a Script or by hand, never through the bridge).
+- **`ParameterLinkTarget` (checked R15, 22/11/2026)**: variables `label` (String, settable), `activation`, `modifiers`
+  (`OwnedVector(LinkModifier)`: link modifiers per target do exist), `target` (`ObjectWeakPointer`),
+  `forceTargetChangedNotificationWhenEquals`. Link modifiers that exist (`Oil.createObject` works): `ToggleLinkModifier`
+  (no setting of its own: switches a Boolean), `InverseLinkModifier` (no setting), `ModuloLinkModifier` (`divisor`),
+  `RemapLinkModifier` (`inputRange`, `outputRange`, `inverse`), `ClampLinkModifier` (`min`, `max`), `MultiplyLinkModifier`,
+  `OffsetLinkModifier`, `SetConstantLinkModifier`, `SmoothLinkModifier`; `FunctionLinkModifier` is abstract (give its types in
+  brackets). Unknown names: `Threshold`, `Step`, `Round`, `Quantize`, `Trigger`, `Counter`, `Not`, `Gate`, `Pulse` +
+  `LinkModifier`. An `Interval(Real)` (Remap's ranges) has `center`, `size`, `begin`, `end`, `invertible`.
 - **Settings of another Script (checked R15, 22/11/2026)**: its declared variables (`name: Oil.Type(v)`) are in
   `tool.dynamicVariables` and attributes (`tool.bandMap`); they have no `getName()`, only `getFriendlyName()`
   (camelCase split: `bandMap` -> `Band Map`, `audioFlash` -> `Audio Flash`; a digit right after a lowercase letter is

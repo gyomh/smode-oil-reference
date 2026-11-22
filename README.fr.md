@@ -586,6 +586,19 @@ plutôt que corriger les objets existants en place.
   `Parameter(Trigger)` se déclenchent (`value.trig()`), `removeAt` et `label.set` marchent aussi. Pratique pour tester le code
   d'un Script qui construit une banque (en lui donnant un faux `tool` dont `parentElement` est cette Compo) sans rien
   ajouter au projet ouvert. `Percentage` : `set(0.58)`, `toString()` relit `58.000`.
+  **Les liens n'y tournent pas** : dans une telle Compo, un `Parameter` lié (`ParameterLinkTarget`, avec ou sans
+  modificateurs de lien) à un autre Parameter de la même banque ne lui passe pas sa valeur, même plusieurs appels plus
+  tard (cible restée à 0). Tester un lien dans le projet (il ne se retire ensuite que par un Script ou à la main, jamais
+  par le pont).
+- **`ParameterLinkTarget` (vérifié R15, 22/11/2026)** : variables `label` (String, réglable), `activation`, `modifiers`
+  (`OwnedVector(LinkModifier)` : les modificateurs de lien par cible existent bien), `target` (`ObjectWeakPointer`),
+  `forceTargetChangedNotificationWhenEquals`. Modificateurs de lien qui existent (`Oil.createObject` marche) :
+  `ToggleLinkModifier` (aucun réglage : bascule un Boolean), `InverseLinkModifier` (aucun réglage), `ModuloLinkModifier`
+  (`divisor`), `RemapLinkModifier` (`inputRange`, `outputRange`, `inverse`), `ClampLinkModifier` (`min`, `max`),
+  `MultiplyLinkModifier`, `OffsetLinkModifier`, `SetConstantLinkModifier`, `SmoothLinkModifier` ; `FunctionLinkModifier` est
+  abstrait (donner ses types entre crochets). Noms inconnus : `Threshold`, `Step`, `Round`, `Quantize`, `Trigger`, `Counter`,
+  `Not`, `Gate`, `Pulse` + `LinkModifier`. Un `Interval(Real)` (les plages du Remap) a `center`, `size`, `begin`, `end`,
+  `invertible`.
 - **Réglages d'un autre Script (vérifié R15, 22/11/2026)** : ses variables déclarées (`nom: Oil.Type(v)`) sont dans
   `tool.dynamicVariables` et en attributs (`tool.bandMap`) ; elles n'ont pas de `getName()`, seulement
   `getFriendlyName()` (camelCase coupé : `bandMap` -> `Band Map`, `audioFlash` -> `Audio Flash` ; un chiffre seul après une
@@ -1286,7 +1299,8 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   est donc un nouveau passage False -> True. Un `Parameter(Boolean)` (on / off) relié à un tel bouton demande deux clics.
   Un Trigger de banque se déclenche en Python par `p.value.trig()`.
   Construit par script (17/11/2026) : SMODE n'ajoute pas le modifier, l'ajouter au **paramètre**
-  (`p.modifiers.append(Oil.createObject("SetConstantLinkModifier"))` ; un `ParameterLinkTarget` n'a pas de `modifiers`). Son
+  (`p.modifiers.append(Oil.createObject("SetConstantLinkModifier"))` ; un `ParameterLinkTarget` a aussi ses propres
+  `modifiers`, voir *Parameter banks liées à un Script*). Son
   `value` est un `ObjectOwnedPointer`, `None` tant qu'on ne lui donne pas d'objet : `v = Oil.createObject("Boolean"); v.set(True);
   m.getVariableByName("value").set(v)`. Cible du lien = le réglage du Script lui-même (`target.target.set(tool.monReglage)`).
   **Piège** : créer le lien (ou le refaire) pousse aussitôt le True dans la cible, comme un clic : un Script qui agit sur ses
