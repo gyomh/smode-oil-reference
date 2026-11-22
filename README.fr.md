@@ -588,7 +588,8 @@ plutôt que corriger les objets existants en place.
   ajouter au projet ouvert. `Percentage` : `set(0.58)`, `toString()` relit `58.000`.
 - **Réglages d'un autre Script (vérifié R15, 22/11/2026)** : ses variables déclarées (`nom: Oil.Type(v)`) sont dans
   `tool.dynamicVariables` et en attributs (`tool.bandMap`) ; elles n'ont pas de `getName()`, seulement
-  `getFriendlyName()` (camelCase coupé : `bandMap` -> `Band Map`, `audioFlash` -> `Audio Flash`). La même variable revient
+  `getFriendlyName()` (camelCase coupé : `bandMap` -> `Band Map`, `audioFlash` -> `Audio Flash` ; un chiffre seul après une
+  lettre minuscule est détaché : `v1` -> `V 1`, mais `audioV1` -> `Audio V1` : comparer sans espaces). La même variable revient
   toujours comme le même objet Python (`tool.dynamicVariables[0] is tool.port`, `tool.port is tool.port`) : `is` suffit pour
   retrouver la cible d'un `ParameterLinkTarget` (`lt.target.get() is var`). Un Script posé dans une Compo jamais insérée
   ne s'exécute pas, même par `execute.trig()` : aucune `dynamicVariables` (0, `numExecutions` 0). `getUniqueIdentifier()`

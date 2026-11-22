@@ -749,7 +749,8 @@ rather than fixing the existing objects in place.
   `Percentage`: `set(0.58)`, `toString()` reads back `58.000`.
 - **Settings of another Script (checked R15, 22/11/2026)**: its declared variables (`name: Oil.Type(v)`) are in
   `tool.dynamicVariables` and attributes (`tool.bandMap`); they have no `getName()`, only `getFriendlyName()`
-  (camelCase split: `bandMap` -> `Band Map`, `audioFlash` -> `Audio Flash`). The same variable always comes back as the
+  (camelCase split: `bandMap` -> `Band Map`, `audioFlash` -> `Audio Flash`; a digit right after a lowercase letter is
+  split off: `v1` -> `V 1`, but `audioV1` -> `Audio V1`: compare without spaces). The same variable always comes back as the
   same Python object (`tool.dynamicVariables[0] is tool.port`, `tool.port is tool.port`): `is` is enough to find the
   target of a `ParameterLinkTarget` (`lt.target.get() is var`). A Script put in a Compo that is never inserted does not
   run, not even with `execute.trig()`: no `dynamicVariables` (0, `numExecutions` 0). `getUniqueIdentifier()` of a
