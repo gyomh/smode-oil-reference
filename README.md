@@ -742,6 +742,11 @@ rather than fixing the existing objects in place.
   value of the Parameter = current value of the variable. The Parameter takes the colour of its
   bank (`colorLabel`). See also the "Self-installing Scripts" section: the linked Parameter pushes
   its own value back onto the script.
+- **Test bench outside the project (checked R15, 22/11/2026)**: a `Compo` made by `Oil.createObject("Compo")` and never inserted
+  accepts `tools.append(ParameterBank)`; its `Parameter(Percentage)` / `Parameter(Boolean)` take values (`value.set`) and its
+  `Parameter(Trigger)` fire (`value.trig()`); `removeAt` and `label.set` work too. Handy to test the code of a Script that
+  builds a bank (give it a fake `tool` whose `parentElement` is that Compo) without adding anything to the open project.
+  `Percentage`: `set(0.58)`, `toString()` reads back `58.000`.
 - The `colorLabel` of any element: `c = o.colorLabel; c.red.set(r/255)` (values 0-1, `SrgbColor`). Trap: a component's
   `toString()` reads back in percent (`64.706` for A5), but `set()` takes 0-1: copying the value read clamps it to FF.
   `c.toString()` gives the hex (`FFA500`).
