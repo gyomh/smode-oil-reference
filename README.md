@@ -747,6 +747,16 @@ rather than fixing the existing objects in place.
   `Parameter(Trigger)` fire (`value.trig()`); `removeAt` and `label.set` work too. Handy to test the code of a Script that
   builds a bank (give it a fake `tool` whose `parentElement` is that Compo) without adding anything to the open project.
   `Percentage`: `set(0.58)`, `toString()` reads back `58.000`.
+- **Settings of another Script (checked R15, 22/11/2026)**: its declared variables (`name: Oil.Type(v)`) are in
+  `tool.dynamicVariables` and attributes (`tool.bandMap`); they have no `getName()`, only `getFriendlyName()`
+  (camelCase split: `bandMap` -> `Band Map`, `audioFlash` -> `Audio Flash`). The same variable always comes back as the
+  same Python object (`tool.dynamicVariables[0] is tool.port`, `tool.port is tool.port`): `is` is enough to find the
+  target of a `ParameterLinkTarget` (`lt.target.get() is var`). A Script put in a Compo that is never inserted does not
+  run, not even with `execute.trig()`: no `dynamicVariables` (0, `numExecutions` 0). `getUniqueIdentifier()` of a
+  variable raises `TypeError` (juce::Uuid not convertible).
+- Scale of a 2D layer: `layer.renderer.placement.scale.scaleFactor` is a linked `Size2d(UnboundedPercentage)`
+  (`linked` True): `width.set(0.5)` sets width and height to 50 %. A bridge call that waits (`time.sleep`) blocks SMODE's
+  frames: read a moving value in two separate calls.
 - The `colorLabel` of any element: `c = o.colorLabel; c.red.set(r/255)` (values 0-1, `SrgbColor`). Trap: a component's
   `toString()` reads back in percent (`64.706` for A5), but `set()` takes 0-1: copying the value read clamps it to FF.
   `c.toString()` gives the hex (`FFA500`).

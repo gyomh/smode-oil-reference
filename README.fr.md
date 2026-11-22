@@ -586,6 +586,16 @@ plutôt que corriger les objets existants en place.
   `Parameter(Trigger)` se déclenchent (`value.trig()`), `removeAt` et `label.set` marchent aussi. Pratique pour tester le code
   d'un Script qui construit une banque (en lui donnant un faux `tool` dont `parentElement` est cette Compo) sans rien
   ajouter au projet ouvert. `Percentage` : `set(0.58)`, `toString()` relit `58.000`.
+- **Réglages d'un autre Script (vérifié R15, 22/11/2026)** : ses variables déclarées (`nom: Oil.Type(v)`) sont dans
+  `tool.dynamicVariables` et en attributs (`tool.bandMap`) ; elles n'ont pas de `getName()`, seulement
+  `getFriendlyName()` (camelCase coupé : `bandMap` -> `Band Map`, `audioFlash` -> `Audio Flash`). La même variable revient
+  toujours comme le même objet Python (`tool.dynamicVariables[0] is tool.port`, `tool.port is tool.port`) : `is` suffit pour
+  retrouver la cible d'un `ParameterLinkTarget` (`lt.target.get() is var`). Un Script posé dans une Compo jamais insérée
+  ne s'exécute pas, même par `execute.trig()` : aucune `dynamicVariables` (0, `numExecutions` 0). `getUniqueIdentifier()`
+  d'une variable lève `TypeError` (juce::Uuid non convertible).
+- Échelle d'un calque 2D : `layer.renderer.placement.scale.scaleFactor` est un `Size2d(UnboundedPercentage)` lié
+  (`linked` True) : `width.set(0.5)` met largeur et hauteur à 50 %. Un appel du pont qui attend (`time.sleep`) bloque les
+  images de SMODE : lire une valeur qui bouge en deux appels séparés.
 - Le `colorLabel` de tout élément : `c = o.colorLabel; c.red.set(r/255)` (valeurs 0-1, `SrgbColor`). Piège : le `toString()`
   d'une composante se relit en pourcentage (`64.706` pour A5), mais `set()` prend 0-1 : recopier la valeur lue la sature à FF.
   `c.toString()` donne l'hexa (`FFA500`).
