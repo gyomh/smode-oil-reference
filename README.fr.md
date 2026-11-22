@@ -2415,6 +2415,14 @@ Un dixième crash (R15, 22/11/2026), via le pont MCP :
    Règle : ne pas retirer par le pont des objets du projet ouvert ; un plugin qui retire sa banque vide d'abord les
    `targets`, puis retire la banque quelques images plus tard (ordre de TV Glitch : les liens d'abord).
 
+Un onzième crash (R15, 22/11/2026), dans un Script de plugin :
+11. Un Script reconstruit a repris (par son nom) une `ParameterBank` qu'un autre code retirait quelques images plus
+   tard, et a continué d'écrire `p.value.set(...)` dans ses Parameters → `ACCESS_VIOLATION` dans `juce.dll`
+   (pile : `python312.dll`, `Python.dll`, `api-Oil.dll`). Même famille que le crash 6 : un wrapper ne garde pas son objet
+   en vie. Règle pour un Script qui garde des wrappers d'une image à l'autre : vérifier à chaque image, AVANT de les
+   utiliser, qu'ils sont encore là (par identité : `any(tools[i] is bank ...)`, ids des `bank.parameters`) ; sinon les
+   oublier sans les toucher. Ne jamais reprendre un objet qu'un autre code est en train de retirer (le renommer au départ).
+
 Après un plantage, Smode peut **rouvrir une vieille sauvegarde** : les sauvegardes automatiques sont dans
 `Documents\Smode Files\<projet>.project\.versions` (toutes les 5 min) ; une recherche de texte dans
 le fichier (`IconFleche`, nom d'un objet) dit laquelle contient le travail voulu.

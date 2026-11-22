@@ -2654,6 +2654,14 @@ A tenth crash (R15, 22/11/2026), through the MCP bridge:
    Rule: do not remove objects of the open project through the bridge; a plugin that removes its bank empties the
    `targets` first, then removes the bank a few frames later (TV Glitch's order: links first).
 
+An eleventh crash (R15, 22/11/2026), in a plugin Script:
+11. A rebuilt Script took back (by its name) a `ParameterBank` that other code removed a few frames later, and kept
+   writing `p.value.set(...)` into its Parameters → `ACCESS_VIOLATION` in `juce.dll` (stack: `python312.dll`,
+   `Python.dll`, `api-Oil.dll`). Same family as crash 6: a wrapper does not keep its object alive. Rule for a Script
+   that keeps wrappers from one frame to the next: check every frame, BEFORE using them, that they are still there (by
+   identity: `any(tools[i] is bank ...)`, ids of `bank.parameters`); otherwise forget them without touching them. Never
+   take back an object that other code is removing (rename it when it leaves).
+
 After a crash, Smode may **reopen an old save**: the automatic saves are in
 `Documents\Smode Files\<project>.project\.versions` (every 5 min); a text search in the file
 (`IconFleche`, the name of an object) tells which one holds the wanted work.
