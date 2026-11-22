@@ -2406,6 +2406,15 @@ Un neuvième crash (R15, 20/11/2026), via le pont MCP :
    ou lire directement l'arbre du projet. Un Script dont le `sourceCode` a été remplacé sans que le document soit
    enregistré revient avec son ancien code après le crash.
 
+Un dixième crash (R15, 22/11/2026), via le pont MCP :
+10. Retirer d'un coup (`compo.tools.removeAt(i)`) une `ParameterBank` de 36 Parameters dont 4 avaient encore des
+   `targets` vers les variables d'un Script supprimé une minute avant (« Target <Disconnected> has no value » dans le
+   journal) → `ACCESS_VIOLATION` (`rip` = 0) ~0,5 s plus tard dans le **fil de l'interface** (pile : `gui-Oil.dll`,
+   `gui-Smode.dll`, `api-Oil.dll`, `juce.dll`, aucun Python). Le journal et le fichier de plantage sont dans
+   `%APPDATA%\Smode Compose\logs` et `\dumps` (le module `minidump` de Python lit la pile à l'adresse `rsp` du journal).
+   Règle : ne pas retirer par le pont des objets du projet ouvert ; un plugin qui retire sa banque vide d'abord les
+   `targets`, puis retire la banque quelques images plus tard (ordre de TV Glitch : les liens d'abord).
+
 Après un plantage, Smode peut **rouvrir une vieille sauvegarde** : les sauvegardes automatiques sont dans
 `Documents\Smode Files\<projet>.project\.versions` (toutes les 5 min) ; une recherche de texte dans
 le fichier (`IconFleche`, nom d'un objet) dit laquelle contient le travail voulu.

@@ -2645,6 +2645,15 @@ A ninth crash (R15, 20/11/2026), through the MCP bridge:
    Oil objects from the bridge; ask that Script (its own endpoint, its own log), or read the project tree directly.
    A Script whose `sourceCode` was replaced but whose document was not saved comes back with its old code after the crash.
 
+A tenth crash (R15, 22/11/2026), through the MCP bridge:
+10. Removing at once (`compo.tools.removeAt(i)`) a `ParameterBank` of 36 Parameters, 4 of them still with
+   `targets` towards the variables of a Script deleted a minute before ("Target <Disconnected> has no value" in the
+   log) → `ACCESS_VIOLATION` (`rip` = 0) ~0.5 s later in the **interface thread** (stack: `gui-Oil.dll`,
+   `gui-Smode.dll`, `api-Oil.dll`, `juce.dll`, no Python). The log and the crash dump are in
+   `%APPDATA%\Smode Compose\logs` and `\dumps` (Python's `minidump` module reads the stack at the log's `rsp`).
+   Rule: do not remove objects of the open project through the bridge; a plugin that removes its bank empties the
+   `targets` first, then removes the bank a few frames later (TV Glitch's order: links first).
+
 After a crash, Smode may **reopen an old save**: the automatic saves are in
 `Documents\Smode Files\<project>.project\.versions` (every 5 min); a text search in the file
 (`IconFleche`, the name of an object) tells which one holds the wanted work.
