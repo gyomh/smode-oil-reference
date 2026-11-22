@@ -1378,6 +1378,10 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   HTTP lancé par le Script : l'ancien état tenait encore son port, le nouveau a reçu `WinError 10048` (port occupé). Remède : libérer le
   port d'un état qui ne tourne plus, et **réessayer le bind** chaque seconde au lieu d'une fois (un état arrêté depuis quelques secondes
   ne se distingue pas d'un état vivant).
+  **Cela arrive aussi sans changement de code (22/11/2026)** : un Script lancé depuis des heures a reçu un nouvel objet `script` pendant
+  qu'on éditait le projet ; l'ancien wrapper, gardé dans l'état arrêté, renvoyait ensuite une autre classe (`EnumerationDefaultWidget`) :
+  il ne désigne plus du tout le Script. Un bind tenté une seule fois laissait la page parler à l'état arrêté (valeurs figées, requêtes
+  en file jamais appliquées). Ne jamais utiliser le `tool` d'un état qui ne tourne plus.
   `tool.getUniqueIdentifier()` sur un `PythonScriptTool` lève `TypeError` (`juce::Uuid` non convertible).
 - **Identifier un élément d'une session à l'autre (17/11/2026)** : `getUniqueIdentifier()` lève la même `TypeError` (`juce::Uuid`) sur
   tous les Element essayés (`Scene`, `TextureLayer`, `SharedElement(TextureGenerator)`, `PythonScriptTool`), et un élément n'a aucun

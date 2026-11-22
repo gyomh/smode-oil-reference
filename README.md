@@ -1609,6 +1609,10 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   server started by the Script: the old state still held its port, the new one got `WinError 10048` (port busy). Remedy: free the port of
   a state that has stopped ticking, and **try the bind again** every second instead of once (a state that stopped less than a few
   seconds ago cannot be told from a live one).
+  **It also happens with no change of code (22/11/2026)**: a Script running for hours got a new `script` object while the project was
+  being edited; the old wrapper, kept in the stale state, then reported another class (`EnumerationDefaultWidget`): it no longer
+  points to the Script at all. A bind tried only once left the page talking to the stopped state (frozen values, requests queued and
+  never applied). Never use the `tool` of a state that has stopped ticking.
   `tool.getUniqueIdentifier()` on a `PythonScriptTool` raises `TypeError` (`juce::Uuid` cannot be converted).
 - **Identifying an element across sessions (17/11/2026)**: `getUniqueIdentifier()` raises the same `TypeError` (`juce::Uuid`) on
   every Element tried (`Scene`, `TextureLayer`, `SharedElement(TextureGenerator)`, `PythonScriptTool`), and an element has no free
