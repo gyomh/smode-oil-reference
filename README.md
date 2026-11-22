@@ -1427,6 +1427,16 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   generator) and the layer uses a `ReferenceGeometryV9Generator` (`.referencer`: `address`, `shared` True, `localElementSpace`,
   `reloadInstance`; its own `modifiers`). The simulation is computed once; cloning a reference works (status success; `directPointer`
   stays `None`, the location is `internalIndirect`).
+- **Connect Points on a particle system kept in its own layer (R15, 22/11/2026)**: a second `GeometryLayer` whose generator is a
+  `ReferenceGeometryV9Generator` aimed at the particle layer's generator slot (`location` 0, `elementPointer` =
+  `layer.getVariableByName("generator")`, no shared element), with a `ConnectPointsGeometryModifier` (`operatorMode` 0 replace) in the
+  reference's `modifiers` and a `ThickLinesGeometryRenderer`, draws the plexus over the particles **only with `referencer.shared` True**.
+  With `shared` False the reference makes its own copy of the particle system and nothing is drawn, every status in success.
+  The lines take the colours of the particles (vertex colours; the renderer's `map` colour multiplies them). The same plexus also works
+  in a single layer: `EmitParticlesGeometryModifier` then `ConnectPointsGeometryModifier` (replace) in a generator's `modifiers`, the
+  renderer a `GroupGeometryLayerUser` whose `renderers` hold a `ThickLinesGeometryRenderer` and a `SimplePointsGeometryRenderer`.
+  `ConnectPointsGeometryModifier`: `distance` (`Interval(PositiveMeters)`, default 0..0.1), `segments`, `maximumLinesCount` (1e6),
+  `generateTriangles`, `maximumTrianglesCount`, `operatorMode`, `intensity`, `masks`.
 - **`InstantiateGeometryModifier`** (Operators): `generators` (OwnedVector, references allowed), `referential`, `selector` (a
   `RandomGeometryMask` picking which generator goes to which vertex), `masks`, `intensity`. **One copy per vertex of the incoming geometry**:
   `SegmentGeometryGenerator.precision` n gives n+1 vertices (precision 3 = 4 particle systems, confirmed), a `PlaneGeometryGenerator`
@@ -2511,7 +2521,9 @@ and writes it back from an external node editor.
 ## Blending modes, video layers, image sequences, shared elements in a Compo (R15, 17/11/2026)
 
 - **Blending modes**: `layer.renderer.blendingMode` on `TextureLayer`, `TextLayer`, `ShapeLayer`; on the element itself for
-  a `Group3dLayer` (`passThrough` by default) and a `Scene`. `GroupLayer` (2D group) and `GeometryLayer` have none.
+  a `Group3dLayer` (`passThrough` by default) and a `Scene`. `GroupLayer` (2D group) and `GeometryLayer` have none on the layer, but
+  the geometry renderers do (`renderer.blendingMode` of `SimplePoints`, `BoxPoints`, `ThickLines`..., `normal` by default; additive = 12
+  `linearDodge`; a script that passed a name there changed nothing, silently, behind its `try`) (R15, 22/11/2026).
   `toString()` gives the name, `get()` the index, **`set()` takes the index only** (`set("multiply")` raises
   `TypeError`). Order (index 0 to 29): `passThrough`, `replace`, `normal`, `dissolve`, `darken`, `multiply`, `colorBurn`,
   `linearBurn`, `darkerColor`, `lighten`, `screen`, `colorDodge`, `linearDodge`, `lighterColor`, `overlay`, `softLight`,

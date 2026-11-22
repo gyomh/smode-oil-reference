@@ -1200,6 +1200,17 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   générateur) et le calque utilise un `ReferenceGeometryV9Generator` (`.referencer` : `address`, `shared` True, `localElementSpace`,
   `reloadInstance` ; ses propres `modifiers`). La simulation est calculée une seule fois ; cloner une référence fonctionne (statut success ;
   `directPointer` reste `None`, la location est `internalIndirect`).
+- **Connect Points sur un système de particules gardé dans son propre calque (R15, 22/11/2026)** : un second `GeometryLayer` dont le générateur
+  est un `ReferenceGeometryV9Generator` visant l'emplacement du générateur du calque de particules (`location` 0, `elementPointer` =
+  `layer.getVariableByName("generator")`, sans élément partagé), avec un `ConnectPointsGeometryModifier` (`operatorMode` 0 replace) dans
+  les `modifiers` de la référence et un `ThickLinesGeometryRenderer`, dessine le plexus par-dessus les particules **seulement avec
+  `referencer.shared` True**. Avec `shared` False, la référence fait sa propre copie du système de particules et rien n'est dessiné, tous
+  les statuts en success. Les lignes prennent les couleurs des particules (couleurs des sommets ; la couleur de la `map` du rendu les
+  multiplie). Le même plexus marche aussi dans un seul calque : `EmitParticlesGeometryModifier` puis `ConnectPointsGeometryModifier`
+  (replace) dans les `modifiers` d'un générateur, le rendu un `GroupGeometryLayerUser` dont les `renderers` contiennent un
+  `ThickLinesGeometryRenderer` et un `SimplePointsGeometryRenderer`. `ConnectPointsGeometryModifier` : `distance`
+  (`Interval(PositiveMeters)`, 0..0,1 par défaut), `segments`, `maximumLinesCount` (1e6), `generateTriangles`, `maximumTrianglesCount`,
+  `operatorMode`, `intensity`, `masks`.
 - **`InstantiateGeometryModifier`** (Opérateurs) : `generators` (OwnedVector, références acceptées), `referential`, `selector` (un
   `RandomGeometryMask` qui choisit quel générateur va à quel sommet), `masks`, `intensity`. **Une copie par sommet de la géométrie entrante** :
   `SegmentGeometryGenerator.precision` n donne n+1 sommets (precision 3 = 4 systèmes de particules, confirmé), un `PlaneGeometryGenerator`
@@ -2284,7 +2295,9 @@ et le réécrit depuis un éditeur de nodes externe.
 
 - **Modes de fusion** : `layer.renderer.blendingMode` sur `TextureLayer`, `TextLayer`, `ShapeLayer` ; sur l'élément
   lui-même pour un `Group3dLayer` (`passThrough` par défaut) et une `Scene`. `GroupLayer` (groupe 2D) et `GeometryLayer`
-  n'en ont pas. `toString()` donne le nom, `get()` l'index, **`set()` ne prend que l'index** (`set("multiply")` lève
+  n'en ont pas sur le calque, mais les rendus de géométrie si (`renderer.blendingMode` de `SimplePoints`, `BoxPoints`,
+  `ThickLines`..., `normal` par défaut ; additif = 12 `linearDodge` ; un script qui y passait un nom ne changeait rien, en silence,
+  derrière son `try`) (R15, 22/11/2026). `toString()` donne le nom, `get()` l'index, **`set()` ne prend que l'index** (`set("multiply")` lève
   `TypeError`). Ordre (index 0 à 29) : `passThrough`, `replace`, `normal`, `dissolve`, `darken`, `multiply`, `colorBurn`,
   `linearBurn`, `darkerColor`, `lighten`, `screen`, `colorDodge`, `linearDodge`, `lighterColor`, `overlay`, `softLight`,
   `hardLight`, `vividLight`, `linearLight`, `pinLight`, `hardMix`, `difference`, `exclusion`, `subtract`, `divide`, `hue`,
