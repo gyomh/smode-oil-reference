@@ -935,6 +935,20 @@ Construit pour une animation de faux OS (voir le motif `os_anim_crt.py`), sur `c
   (linearDodge), `style.luminosityThreshold` (0.30), `style.outputLuminosity` (1.4 = 140 %), `radius` 16. Le flou n'a pas
   de `blendingMode` propre ; `style` (`BlurStyleParameters`) contient aussi `aggregator`, `invertBlendingOrder`,
   `maskInterpretation`.
+- **Depth of Field (R15, 22/11/2026)** : celui des menus de SMODE est `DepthOfFieldV8TextureModifier` (l'ancien
+  `DepthOfFieldTextureModifier` est rangé dans les presets « Legacy »). Mêmes `quality` / `style` que le flou, plus
+  `visualizeLayers`, `depthMap` (`WeakPointer(TextureGenerator)`) et **`cocFunction`** (`LensCocFunction`, le « Coc Function ·
+  Lens DoF » du panneau) : `focusDistance` (`Option(PositiveMeters)` : `.enabled` False par défaut, `.value` 5 m ; désactivée,
+  le panneau montre une distance calculée), `clippingDistances` (`ClippingDistanceInterval` : `begin` 0,1, `end` 100,
+  `automatic` True, plus `center` / `size` / `invertible`), `focalLength` (mm, 20), `fNumber` (2), `aperture` (mm, 10),
+  `imageDistance` (mm), `sensorDensity` (px/mm, 100), `maximum` (px, 20), `coeff`. Un chemin comme
+  `m.cocFunction.focalLength.set(35.0)` marche.
+- `style.aggregator` est un **objet possédé dont la classe est le choix** (`OwnedPointer(ColorAggregator)`) :
+  `AverageColorAggregator` (par défaut), `MaximumColorAggregator`, `MinimumColorAggregator` ; on le change en affectant un
+  nouvel objet (`m.style.aggregator = Oil.createObject("MaximumColorAggregator")`).
+- `quality.downSampling` est un `Option(DownSamplingFactors)` : `.enabled`, `.value.width` / `.value.height`
+  (`DownSamplingFactor`, un index : 0 `one`, 1 `oneOverTwo`, 2 `oneOverFour`... 6 `oneOverSixtyFour` ; le panneau affiche
+  1 pour `one`) et `.value.link`. `quality.budget.lookups` est le Budget du panneau ; `perfectBudget` le « (Perfect: n) » à côté.
 - **Distorsion barillet / coussinet = `WarpTextureModifier`** (warp de maillage, `points` = `OwnedVector(Warp2dPoint)`,
   chacun avec `position` et `delta`, deux `Canvas2dPosition` en fractions de la compo ; `precision.x/.y` = subdivisions,
   `editSource`, `perspectiveMapping`, `filtering`). Un Warp neuf démarre avec les 4 points de coin. **Faire `points.clear()`

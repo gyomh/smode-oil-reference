@@ -1168,6 +1168,19 @@ Built for a fake-OS animation (see `os_anim_crt.py` pattern), all on `compo.modi
   (linearDodge), `style.luminosityThreshold` (0.30), `style.outputLuminosity` (1.4 = 140 %), `radius` 16. The blur has
   no `blendingMode` of its own; `style` (`BlurStyleParameters`) also holds `aggregator`, `invertBlendingOrder`,
   `maskInterpretation`.
+- **Depth of Field (R15, 22/11/2026)**: the one of SMODE's menus is `DepthOfFieldV8TextureModifier` (the older
+  `DepthOfFieldTextureModifier` is filed in the "Legacy" presets). Same `quality` / `style` as the blur, plus
+  `visualizeLayers`, `depthMap` (`WeakPointer(TextureGenerator)`) and **`cocFunction`** (`LensCocFunction`, the panel's
+  "Coc Function · Lens DoF"): `focusDistance` (`Option(PositiveMeters)`: `.enabled` False by default, `.value` 5 m; off, the
+  panel shows a computed distance), `clippingDistances` (`ClippingDistanceInterval`: `begin` 0.1, `end` 100, `automatic`
+  True, plus `center` / `size` / `invertible`), `focalLength` (mm, 20), `fNumber` (2), `aperture` (mm, 10), `imageDistance`
+  (mm), `sensorDensity` (px/mm, 100), `maximum` (px, 20), `coeff`. A path such as `m.cocFunction.focalLength.set(35.0)` works.
+- `style.aggregator` is an **owned object whose class is the choice** (`OwnedPointer(ColorAggregator)`): `AverageColorAggregator`
+  (default), `MaximumColorAggregator`, `MinimumColorAggregator`; change it by assigning a new object
+  (`m.style.aggregator = Oil.createObject("MaximumColorAggregator")`).
+- `quality.downSampling` is `Option(DownSamplingFactors)`: `.enabled`, `.value.width` / `.value.height` (`DownSamplingFactor`,
+  an index: 0 `one`, 1 `oneOverTwo`, 2 `oneOverFour`... 6 `oneOverSixtyFour`; the panel shows 1 for `one`) and `.value.link`.
+  `quality.budget.lookups` is the panel's Budget; `perfectBudget` the "(Perfect: n)" next to it.
 - **Barrel / pincushion distortion = `WarpTextureModifier`** (mesh warp, `points` = `OwnedVector(Warp2dPoint)`, each with
   `position` and `delta`, both `Canvas2dPosition` in compo fractions; `precision.x/.y` = subdivisions, `editSource`,
   `perspectiveMapping`, `filtering`). A new Warp starts with the 4 corner points. **Do `points.clear()` first and append
