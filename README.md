@@ -1682,6 +1682,10 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
 - **A deleted object, or one from a closed document**: touching it sometimes raises `RuntimeError('Access violation - no RTTI data!')`, but reading
   on every frame a `Parameter` just removed from its bank crashed SMODE (no Python exception). Never keep an Oil object cached without checking
   it still exists (here: read the bank again as soon as its parameter count changes).
+- **Objects another Script keeps (R15, 23/11/2026)**: SMODE shares the globals of every Script, so one Script can reach the Oil objects
+  another keeps in its own tables (a cache of elements by id...). Reading them from there crashed SMODE: such a table holds objects whose
+  element was removed or moved since. To look at the project from outside, walk it again from `script.project` (variables, vectors,
+  owned pointers: about 17 000 visited in one call without trouble), never another Script's cache.
 - Autosaves `<doc>.versions\<doc>.compo.AutoSave<date>` are complete compos: copied as a `.compo` next to the original, they open again. A bank's
   states can be read in them (`values`: key = uuid of the `Parameter`, typed value `'Real @... 2.`).
 
@@ -1699,6 +1703,10 @@ Verified while turning a Script into a plugin dragged alone into any compo (real
   clips in use. Two references to the same element share one decode and one transport.
   Nuance (R15, 20/11/2026): a shared video with a `StandalonePlayer` told to `play` advances even when nothing references it:
   its position is no proof that something shows it (check on screen).
+- **What a Shared Element of a Compo's `tools` holds is out of the layer tree (R15, 23/11/2026)**: a walk of the project through
+  `layers` and each layer's `generator` (a `Compo`) never reaches the Scripts and layers inside `tools[i].content` of a
+  `SharedElement(...)`. A Compo kept as a Shared Element in another Compo's tools (a clip library, a compo plugged into a plugin's input)
+  takes its Scripts out of such a walk: also descend into the `content` of every tool whose class starts with `SharedElement`.
 - **A video made by script has no player (R15, 20/11/2026)**: `VideoFileTextureGenerator.transport.player` is `None`,
   `transport.play.trig()` puts `state` at `playing` yet the position stays `0:00:00:00`. Give it one:
   `video.transport.player = Oil.createObject("StandalonePlayer")` (`parameters.looping`, `parameters.launchMode`); after that

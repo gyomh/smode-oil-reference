@@ -1455,6 +1455,10 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
 - **Un objet supprimé ou d'un document fermé** : y accéder lève parfois `RuntimeError('Access violation - no RTTI data!')`, mais relire à chaque
   image un `Parameter` qu'on vient de retirer de sa banque a fait planter SMODE (pas d'exception Python). Ne jamais garder en cache un objet Oil
   sans vérifier qu'il existe encore (ici : relire la banque dès que son nombre de paramètres change).
+- **Les objets qu'un autre Script garde (R15, 23/11/2026)** : SMODE partage les globals de tous les Scripts, un Script peut donc atteindre
+  les objets Oil qu'un autre garde dans ses tables (un cache d'éléments par id...). Les y lire a fait planter SMODE : une telle table garde
+  des objets dont l'élément a été retiré ou déplacé depuis. Pour regarder le projet de l'extérieur, le reparcourir depuis `script.project`
+  (variables, vecteurs, pointeurs possédés : environ 17 000 visités en un appel sans souci), jamais le cache d'un autre Script.
 - Les sauvegardes automatiques `<doc>.versions\<doc>.compo.AutoSave<date>` sont des compos complètes : copiées en `.compo` à côté de l'original,
   elles se rouvrent. Les états d'une banque y sont lisibles (`values` : clé = uuid du `Parameter`, valeur typée `'Real @... 2.`).
 
@@ -1472,6 +1476,11 @@ Vérifié en faisant d'un Script un plugin qu'on glisse seul dans n'importe quel
   coûte que les clips branchés. Deux références au même élément partagent un seul décodage et un seul transport.
   Nuance (R15, 20/11/2026) : une vidéo partagée dotée d'un `StandalonePlayer` à qui on a dit `play` avance même si rien ne la
   référence : sa position ne prouve pas que quelque chose l'affiche (vérifier à l'écran).
+- **Ce que contient un Shared Element des `tools` d'une Compo est hors de l'arbre des calques (R15, 23/11/2026)** : un parcours du projet par
+  `layers` et le `generator` de chaque calque (une `Compo`) n'atteint jamais les Scripts et calques de `tools[i].content` d'un
+  `SharedElement(...)`. Une Compo gardée comme élément partagé dans les tools d'une autre (une bibliothèque de clips, une compo branchée
+  sur l'entrée d'un plugin) sort ainsi ses Scripts d'un tel parcours : descendre aussi dans le `content` de tout outil dont la classe
+  commence par `SharedElement`.
 - **Une vidéo créée par script n'a pas de lecteur (R15, 20/11/2026)** : `VideoFileTextureGenerator.transport.player` vaut `None`,
   `transport.play.trig()` met `state` à `playing` mais la position reste à `0:00:00:00`. Lui en donner un :
   `video.transport.player = Oil.createObject("StandalonePlayer")` (`parameters.looping`, `parameters.launchMode`) ; ensuite
