@@ -1946,7 +1946,9 @@ pas seulement le script lui-même.
   dans le Python de SMODE) : 300 Ko de code gardés dans une chaîne = **10,5 ms par image** (environ 4 fps sur un projet
   à 15-20 fps) ; 33 Ko de commentaires ≈ 0,2 ms ; un en-tête décoratif de 2 Ko ≈ 0,01 ms. La chaîne n'est donc une
   solution que pour un code modeste : au-delà, le fichier lu une fois (ci-dessous) ; un chargeur de quelques lignes
-  avec 6 paramètres ≈ 0,4 ms. Mesuré : Script vide 0,1 ms ; un pont HTTP de 250 lignes avec 10 paramètres 9,4 ms par
+  avec 6 paramètres ≈ 0,4 ms. **Le code en clair (hors chaîne) coûte bien plus cher par Ko** : 72 Ko de fonctions = 82 à
+  99 ms par image, 123 Ko = 62 ms, 17 Ko = 13 ms (contre ≈ 0,035 ms par Ko dans une chaîne) ; chaque paramètre déclaré
+  ≈ 0,015 à 0,05 ms (un chargeur avec 70 paramètres ≈ 1,4 ms). Mesuré : Script vide 0,1 ms ; un pont HTTP de 250 lignes avec 10 paramètres 9,4 ms par
   image (environ 2 fps sur un projet à 12 fps) ; un Script de 4000 lignes faisait passer un projet de 11,8 à
   6,6 fps (7,2 fps avec son corps non exécuté).
   - Gardez le code dans une chaîne exécutée une seule fois, et n'appelez qu'une fonction à chaque image (0,6 ms pour

@@ -2179,7 +2179,9 @@ script itself.
   cost also follows their length** (measured 23/11/2026, parse + unparse + compile in SMODE's Python): 300 KB of code kept
   in a string = **10.5 ms per frame** (about 4 fps on a 15-20 fps project); 33 KB of comments ≈ 0.2 ms; a 2 KB decorative
   header ≈ 0.01 ms. A string is only fine for modest code: beyond that, the file read once (below); a loader of a few
-  lines with 6 parameters ≈ 0.4 ms.
+  lines with 6 parameters ≈ 0.4 ms. **Plain code (outside a string) costs far more per KB**: 72 KB of functions = 82 to 99
+  ms per frame, 123 KB = 62 ms, 17 KB = 13 ms (against ≈ 0.035 ms per KB in a string); each declared parameter ≈ 0.015 to
+  0.05 ms (a loader with 70 parameters ≈ 1.4 ms).
   Measured: empty Script 0.1 ms; a 250-line HTTP bridge with 10 parameters 9.4 ms per frame (about 2 fps on a
   project running at 12 fps); a 4000-line Script took a project from 11.8 to 6.6 fps (7.2 fps with its body not
   executed).
