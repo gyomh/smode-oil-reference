@@ -1444,6 +1444,24 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
 - Range mapping: `RemapLinkModifier` (`inputRange`, `outputRange` = `Interval(Real)`) in `ParameterLinkTarget.modifiers` (tested: output 0.5..0.5 freezes
   the target); `FunctionLinkModifier(Percentage, Meters)` can be created with its types in brackets. A cue in the target's own unit is simpler.
 - A 4 m high frame: `AffineCamera` at distance 3.4641, vertical fov 60 deg (1920x1080): 25 % from the top = +1 m.
+- **What the right-click makes (read on a real project, 23/11/2026)**: an `AnimationBank` with an EMPTY `label` in Show's `tools` (the tree
+  shows it as "Animations"), holding a `FunctionCue(Angle)` with an empty `label` too (the tree names it "Loop <element> <setting> → X"),
+  `function` `ParametricScalarFunction(Seconds, Angle)` (`minimum` 0, `maximum` 2π in radians, `period` 3, `phase` 0.5, `wrapMode` 1),
+  `cue.parameters`: `launchMode` 1, `looping` True, `targetLength` = the period, `automateTransport` True. One `ParameterLinkTarget` (empty label)
+  under the cue.
+- **`FunctionCue(<T>)` / `ParametricScalarFunction(Seconds, <T>)`** exist for `Angle`, `Real`, `Percentage`, `SignedPercentage`,
+  `UnboundedPercentage`, `Meters`, `PositiveMeters`, `PositiveReal`, `StrictlyPositiveReal`, `Integer`, `PositiveInteger`, `Seconds`, `Boolean`
+  (not for `Density`, `Opacity`, `AlphaComponent`: "unknown Oil type name"). Use the class of the target variable (`var.getOilClassName()`).
+- **`function.parameters.wrapMode`** (`FunctionWrapMode`, SMODE's three): 0 clamp (once, held at the end), 1 repeat, 2 mirroredRepeat (back and
+  forth). The function only sees time beyond one period if the cue lasts longer: for back and forth, `targetLength` = 2 periods.
+  **`cue.parameters.playMode`** (`CuePlayMode`): 0 forward, 1 backward, 2 pingPong, 3 reversePingPong (`toString()` gives the names; it does
+  not for `launchMode`).
+- **Shapes** (`Oil.createObject("<Name>FunctionShape")`): `LinearRamp`, `Sinus` (0 -> 1 -> 0), `Triangle`, `Square`, `Noise` (`frequency`,
+  `contrast`, `type`, `seed`), `WhiteNoise` (`seed`), `Sigmoid` (`smoothing`), the easings `Sine`, `Quad`, `Cubic`, `Quart`, `Quint`, `Expo`,
+  `Circ`, `Back`, `Elastic`, `Bounce` (each with `easeIn` / `easeOut`, both True), `SuperFormula` (`a`, `b`, `n1`..`n3`), `MidiKeyboard`.
+- **Finding what animates a setting**: `linkTarget.target.get()` returns the SAME Python object as the variable read on the element
+  (`t.target.get() is layer.placement.orientation.x` is True, another axis False): walk the `targets` of the cues of every `AnimationBank`
+  and of the parameters of every `ParameterBank` (Show's tools, the containers' tools) and compare with `is`.
 
 
 ## Multiplying particle systems: shared element, Instantiate, point renderers (R15, 03/11/2026)

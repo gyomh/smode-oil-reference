@@ -1219,6 +1219,24 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
 - Mise en correspondance : `RemapLinkModifier` (`inputRange`, `outputRange` = `Interval(Real)`) dans `ParameterLinkTarget.modifiers` (testé : sortie
   0,5..0,5 fige la cible) ; `FunctionLinkModifier(Percentage, Meters)` se crée avec ses types entre parenthèses. Une cue dans l'unité de la cible est plus simple.
 - Cadre de 4 m de haut : `AffineCamera` à la distance 3,4641, fov vertical 60° (1920x1080) : 25 % depuis le haut = +1 m.
+- **Ce que fait le clic droit (lu sur un vrai projet, 23/11/2026)** : une `AnimationBank` au `label` VIDE dans les `tools` du Show (l'arbre
+  l'affiche « Animations »), qui contient une `FunctionCue(Angle)` au `label` vide elle aussi (l'arbre la nomme « Loop <élément> <réglage> → X »),
+  `function` `ParametricScalarFunction(Seconds, Angle)` (`minimum` 0, `maximum` 2π en radians, `period` 3, `phase` 0,5, `wrapMode` 1),
+  `cue.parameters` : `launchMode` 1, `looping` True, `targetLength` = la période, `automateTransport` True. Un `ParameterLinkTarget` (label vide)
+  sous la cue.
+- **`FunctionCue(<T>)` / `ParametricScalarFunction(Seconds, <T>)`** existent pour `Angle`, `Real`, `Percentage`, `SignedPercentage`,
+  `UnboundedPercentage`, `Meters`, `PositiveMeters`, `PositiveReal`, `StrictlyPositiveReal`, `Integer`, `PositiveInteger`, `Seconds`, `Boolean`
+  (pas pour `Density`, `Opacity`, `AlphaComponent` : « unknown Oil type name »). Prendre la classe de la variable cible (`var.getOilClassName()`).
+- **`function.parameters.wrapMode`** (`FunctionWrapMode`, les trois de SMODE) : 0 clamp (une fois, puis tenu à la fin), 1 repeat, 2 mirroredRepeat
+  (aller-retour). La fonction ne voit le temps au-delà d'une période que si la cue dure plus longtemps : pour l'aller-retour, `targetLength` =
+  2 périodes. **`cue.parameters.playMode`** (`CuePlayMode`) : 0 forward, 1 backward, 2 pingPong, 3 reversePingPong (`toString()` donne les
+  noms ; pas pour `launchMode`).
+- **Formes** (`Oil.createObject("<Nom>FunctionShape")`) : `LinearRamp`, `Sinus` (0 -> 1 -> 0), `Triangle`, `Square`, `Noise` (`frequency`,
+  `contrast`, `type`, `seed`), `WhiteNoise` (`seed`), `Sigmoid` (`smoothing`), les easings `Sine`, `Quad`, `Cubic`, `Quart`, `Quint`, `Expo`,
+  `Circ`, `Back`, `Elastic`, `Bounce` (chacun avec `easeIn` / `easeOut`, tous deux True), `SuperFormula` (`a`, `b`, `n1`..`n3`), `MidiKeyboard`.
+- **Trouver ce qui anime un réglage** : `linkTarget.target.get()` rend le MÊME objet Python que la variable lue sur l'élément
+  (`t.target.get() is layer.placement.orientation.x` vaut True, un autre axe False) : parcourir les `targets` des cues de chaque `AnimationBank`
+  et des paramètres de chaque `ParameterBank` (tools du Show, tools des conteneurs) et comparer avec `is`.
 
 
 ## Multiplier un système de particules : élément partagé, Instantiate, rendus en points (R15, 03/11/2026)
