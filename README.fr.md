@@ -1310,6 +1310,17 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
 - Un set VJ à 4 systèmes (MotionLines + feedback + flou en 1080p, quatre systèmes actifs à opacité 0) tournait à environ 10 fps sur la machine de l'auteur (rapporté,
   non mesuré par script) : lire les ms / fps de la barre d'état avant de garder un tel set.
 
+### Calque de lignes sur une référence partagée : deux erreurs et leur cause (R15, 23/11/2026)
+
+- **« Could not find target element »** sur le `liveStatus` d'une `ReferenceGeometryV9Generator` (ici sous un
+  `ConnectPointsGeometryModifier`) : l'élément visé a été supprimé. SMODE ne re-cible pas la référence vers un autre élément du
+  même nom (une copie restée dans le projet) : il faut reposer la cible (`elementPointer`) ou refaire le calque. Cas vécu :
+  des copies en double d'un calque de particules supprimées, la référence pointait sur l'une d'elles.
+- **« No Triangles information in geometry »** sur le `liveStatus` du **renderer** : un renderer de surface (rendu de
+  triangles) posé sur une géométrie qui n'a que des points ou des segments (particules, lignes de Connect Points). Remettre un
+  renderer de points / lignes (`ThickLinesGeometryRenderer`, `SimplePointsGeometryRenderer`). Le même texte peut venir de
+  l'échantillonneur de position d'un émetteur (voir plus haut) : lire l'objet fautif dans le chemin du statut.
+
 ## Shaders ISF à plusieurs vidéos, états de banque, données en texture (R15, 05/11/2026)
 
 Vérifié en construisant un datamosh temps réel : un `IsfFileTextureModifier` reçoit deux clips et leurs vidéos de vecteurs, à 60 FPS.

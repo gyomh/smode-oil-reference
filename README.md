@@ -1523,6 +1523,17 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
 - A 4-system VJ set (MotionLines + feedback + blur at 1080p, four systems running at opacity 0) ran at about 10 fps on the author's machine (reported, not
   measured by script): check the ms / fps in the status bar before keeping such a set.
 
+### Lines layer on a shared reference: two errors and their cause (R15, 23/11/2026)
+
+- **"Could not find target element"** on the `liveStatus` of a `ReferenceGeometryV9Generator` (here under a
+  `ConnectPointsGeometryModifier`): the element it points at was deleted. SMODE does not re-target the reference to another
+  element of the same name (a copy left in the project): set the target (`elementPointer`) again or rebuild the layer. Seen
+  when duplicate copies of a particle layer were removed and the reference pointed at one of them.
+- **"No Triangles information in geometry"** on the **renderer**'s `liveStatus`: a surface renderer (triangle rendering) on a
+  geometry that only has points or segments (particles, Connect Points lines). Put back a points / lines renderer
+  (`ThickLinesGeometryRenderer`, `SimplePointsGeometryRenderer`). The same text can come from an emitter's position sampler
+  (see above): read which object is at fault from the status path.
+
 ## Multi-video ISF shaders, bank states, data textures (R15, 05/11/2026)
 
 Verified while building a real-time datamosh: one `IsfFileTextureModifier` receives two clips and their vector videos, at 60 FPS.
