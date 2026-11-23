@@ -47,6 +47,7 @@
 - [Widget Tool (R15, 09/10/2026)](#widget-tool-r15-09102026)
 - [Video export from a script](#video-export-from-a-script-r15-11102026)
 - [Findings of a full mirror of the tree (Node Editor agent)](#findings-of-a-full-mirror-of-the-tree-node-editor-agent-r15-13-16112026)
+- [OSC input: links driven by OSC messages](#osc-input-links-driven-by-osc-messages-r15-23112026)
 - [Known UI bugs](#known-ui-bugs)
 - [Observed instabilities](#observed-instabilities)
 - [The MCP bridge (reminder)](#the-mcp-bridge-reminder)
@@ -2709,6 +2710,56 @@ and writes it back from an external node editor.
   element each one shows.
 - **Walking**: a Compo layer is a `TextureLayer` whose `generator` is the `Compo` (`layers`, `tools`); a
   `SharedElement`'s content is `.content`. `element.sourceElements` is a method (`sourceElements()`).
+
+## OSC input: links driven by OSC messages (R15, 23/11/2026)
+
+- **Device**: an OSC device made in SMODE (Devices, « Create new OSC »: Receive on a local port, Send to a remote one)
+  is a `JuceOscControlDevice` in `engine.devices.devices` (`engine` is a global of a Script). `identifier` prints
+  `127.0.0.1:6000<->127.0.0.1:5000`; `lastReceivedMessage` (`String`) gives the last message received, e.g.
+  `oscReal /a/b/c [0] = 1`: handy to check from a script that a message arrived. `logMessages`, `mute` are `Boolean`s.
+- **A link driven by OSC** (made by hand, read by script): a `Link` of a `LinkBank` (Show's tools; the bank's label
+  is empty, SMODE shows "Links"). `link.source` is a `SinglePrecisionDeviceLinkSource` (`Single Precision` in the UI):
+  - `source.device` is a `ControlDeviceSelector`: `deviceName` (`String`, the device's name in SMODE), `factory`
+    (`"Remote Control"`), `address` (`FriendlyNetworkAddress`, `port` 1 by default);
+  - `source.controllerIdentifier` is an `OwnedPointer` to an `OscControllerIdentifier`: `path` (`String`, the OSC
+    address, chosen freely), `type` (`OscValueType`, `oscReal` for a float), `argumentIndex` (`PositiveInteger`, which
+    argument of the message);
+  - `OscValueType` choices (index for `set()`): `oscVoid` 0 (a message without argument), `oscInteger` 1, `oscString` 2,
+    `oscReal` 3, `oscBlob` 4, `oscColor` 5 (the OSC `r` tag, RGBA). `set(6)` is accepted without error and prints `6`:
+    check the index before setting it;
+  - `source.lastSetValue`: the last value received (a float for `oscReal`); `source.modifiers`: link modifiers on the
+    source side.
+  - `link.targets[0]` is a plain `ParameterLinkTarget` (`target` = the variable, `modifiers`), as for every link.
+- **Measured**: a UDP message sent from outside SMODE (plain socket, no library) to the device's Receive port reaches
+  the target at once; `lastReceivedMessage` and `lastSetValue` show it.
+- **A cue's play head**: a link onto `cue.transport.position` (`Seconds`) takes **seconds**, not 0..1 of the cue: a
+  4 s cue wants 0..4. Normalising (0..1 → 0..length) needs a modifier on the link, kept in step with the cue's length.
+- **Fragile**: deleting the element a link targets deletes the link too; making the element again does not bring it
+  back. A script that relies on OSC links has to own them: check them at each pass and make again the missing ones.
+- **The device's own settings**: `device.identifier` is a `SocketDeviceIdentifier`: `factory` (`"OSC"`), `receive`,
+  `localInput` (`"127.0.0.1:6000"`), `reuseLocalPort`, `send`, `remoteOutput`, `broadcast`. The name given to the device in
+  SMODE (the one a link's `device.deviceName` holds) is not a variable of the device; `getFriendlyName()` gives its
+  addresses (`127.0.0.1:6000<->127.0.0.1:5000`).
+- **Making an OSC link by script** (works, 23/11/2026): `Oil.createObject("Link")`, its `source` an
+  `Oil.createObject("SinglePrecisionDeviceLinkSource")` with `device.factory.set("Remote Control")`,
+  `device.deviceName.set(<the device's name>)` and `source.controllerIdentifier = Oil.createObject("OscControllerIdentifier")`
+  (`path`, `type.set(3)`, `argumentIndex.set(0)`); then its `ParameterLinkTarget`s (modifiers first, `target` last) and
+  `linkBank.links.append(link)`. Python wrappers of a variable keep their identity (`lt.target.get() is cue.transport.position`
+  is `True` on the next pass), so a sync can compare and leave in place what is right.
+- `RemapLinkModifier` is not templated (`RemapLinkModifier(Real)` does not exist): `inputRange` / `outputRange`
+  (`Interval`: `begin`, `end`), `inverse`. On a link target it turns an OSC 0..1 into 0..length in seconds for a cue's play head.
+- **A cue's transport** (`cue.transport`, `CueTransport`): triggers `reset`, `play`, `pause`, `finalize`, `previous`,
+  `next`; `playing` (`Boolean`), `state` (`AnimationState`), `position` (`Seconds`), `length`, `remainingTime`,
+  `timeBeforePlay`, `timeBase`. Its play settings (`cue.parameters`, `CuePlayParameters`): `launchMode`
+  (`AnimationLaunchMode`: 0 Manual, 1 Restart With Activation, 2 Restart With Intensity, 3 Play With Intensity),
+  `resetEvent`, `automateTransport`, `in`, `out`, `targetLength`, `speed` (`SpeedFactor`, 0 accepted), `reverseSpeed`,
+  `playMode`, `looping`, `offset`, `syncToTempo`.
+- **An outside clock for a cue** (measured, 23/11/2026): a cue left **playing at speed 0** follows the position a link
+  writes into `transport.position`, and its function is evaluated there every frame (FunctionCue 4 s, LinearRamp: OSC
+  0.25 -> 1 s -> value 0.25; 0.75 -> 3 s -> 0.75). Forward, looping (never stopped by reaching its end), Launch Mode
+  Manual (an activation does not restart it): another program can be the clock (pause, restart, back and forth are its own).
+- Git Bash trap when testing from a shell: an argument starting with `/` (`/a/b/c`) is turned into a Windows path
+  (`C:/Program Files/Git/a/b/c`) before reaching Python: `MSYS_NO_PATHCONV=1`.
 
 ## Known UI bugs
 

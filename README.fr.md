@@ -45,6 +45,7 @@
 - [Widget Tool (R15, 09/10/2026)](#widget-tool-r15-09102026)
 - [Export vidéo depuis un script](#export-vidéo-depuis-un-script-r15-11102026)
 - [Découvertes d'un miroir complet de l'arbre (agent du Node Editor)](#découvertes-dun-miroir-complet-de-larbre-agent-du-node-editor-r15-13-16112026)
+- [Entrée OSC : liens pilotés par des messages OSC](#entrée-osc--liens-pilotés-par-des-messages-osc-r15-23112026)
 - [Bugs UI connus](#bugs-ui-connus)
 - [Instabilités observées](#instabilités-observées)
 - [Le pont MCP (rappel)](#le-pont-mcp-rappel)
@@ -2490,6 +2491,60 @@ et le réécrit depuis un éditeur de nodes externe.
   ses `dynamicVariables` : le même test de référence dit quel élément partagé chacune montre.
 - **Parcours** : un calque Compo est un `TextureLayer` dont le `generator` est la `Compo` (`layers`, `tools`) ; le contenu
   d'un `SharedElement` est `.content`. `element.sourceElements` est une méthode (`sourceElements()`).
+
+## Entrée OSC : liens pilotés par des messages OSC (R15, 23/11/2026)
+
+- **Appareil** : un appareil OSC créé dans SMODE (Devices, « Create new OSC » : Receive sur un port local, Send vers un
+  port distant) est un `JuceOscControlDevice` de `engine.devices.devices` (`engine` est une globale d'un Script).
+  `identifier` affiche `127.0.0.1:6000<->127.0.0.1:5000` ; `lastReceivedMessage` (`String`) donne le dernier message
+  reçu, ex. `oscReal /a/b/c [0] = 1` : pratique pour vérifier par script qu'un message est arrivé. `logMessages`, `mute`
+  sont des `Boolean`.
+- **Un lien piloté par OSC** (fait à la main, lu par script) : un `Link` d'une `LinkBank` (outils du Show ; le label de
+  la banque est vide, SMODE affiche « Links »). `link.source` est une `SinglePrecisionDeviceLinkSource` (`Single
+  Precision` dans l'interface) :
+  - `source.device` est un `ControlDeviceSelector` : `deviceName` (`String`, le nom de l'appareil dans SMODE), `factory`
+    (`"Remote Control"`), `address` (`FriendlyNetworkAddress`, `port` 1 par défaut) ;
+  - `source.controllerIdentifier` est un `OwnedPointer` vers un `OscControllerIdentifier` : `path` (`String`, l'adresse
+    OSC, choisie librement), `type` (`OscValueType`, `oscReal` pour un float), `argumentIndex` (`PositiveInteger`, quel
+    argument du message) ;
+  - choix d'`OscValueType` (rang pour `set()`) : `oscVoid` 0 (un message sans argument), `oscInteger` 1, `oscString` 2,
+    `oscReal` 3, `oscBlob` 4, `oscColor` 5 (le tag OSC `r`, RGBA). `set(6)` passe sans erreur et affiche `6` : vérifier
+    le rang avant de le poser ;
+  - `source.lastSetValue` : la dernière valeur reçue (un float pour `oscReal`) ; `source.modifiers` : modifiers du lien
+    côté source.
+  - `link.targets[0]` est un `ParameterLinkTarget` ordinaire (`target` = la variable, `modifiers`), comme pour tout lien.
+- **Mesuré** : un message UDP envoyé hors de SMODE (socket simple, sans bibliothèque) vers le port Receive de l'appareil
+  atteint la cible tout de suite ; `lastReceivedMessage` et `lastSetValue` le montrent.
+- **Tête de lecture d'une cue** : un lien vers `cue.transport.position` (`Seconds`) prend des **secondes**, pas 0..1 de
+  la cue : une cue de 4 s veut 0..4. Normaliser (0..1 → 0..durée) demande un modifier sur le lien, tenu à jour avec la
+  durée de la cue.
+- **Fragile** : supprimer l'élément visé par un lien supprime le lien ; refaire l'élément ne le ramène pas. Un script qui
+  compte sur des liens OSC doit les posséder : les vérifier à chaque passage et refaire ceux qui manquent.
+- **Réglages de l'appareil** : `device.identifier` est un `SocketDeviceIdentifier` : `factory` (`"OSC"`), `receive`,
+  `localInput` (`"127.0.0.1:6000"`), `reuseLocalPort`, `send`, `remoteOutput`, `broadcast`. Le nom donné à l'appareil dans
+  SMODE (celui que garde `device.deviceName` d'un lien) n'est pas une variable de l'appareil ; `getFriendlyName()` donne ses
+  adresses (`127.0.0.1:6000<->127.0.0.1:5000`).
+- **Créer un lien OSC par script** (ça marche, 23/11/2026) : `Oil.createObject("Link")`, sa `source` un
+  `Oil.createObject("SinglePrecisionDeviceLinkSource")` avec `device.factory.set("Remote Control")`,
+  `device.deviceName.set(<nom de l'appareil>)` et `source.controllerIdentifier = Oil.createObject("OscControllerIdentifier")`
+  (`path`, `type.set(3)`, `argumentIndex.set(0)`) ; puis ses `ParameterLinkTarget` (modifiers d'abord, `target` en dernier) et
+  `linkBank.links.append(link)`. Les objets Python d'une variable gardent leur identité (`lt.target.get() is
+  cue.transport.position` vaut `True` au passage suivant) : une synchro peut comparer et laisser en place ce qui est juste.
+- `RemapLinkModifier` n'est pas un modèle (`RemapLinkModifier(Real)` n'existe pas) : `inputRange` / `outputRange`
+  (`Interval` : `begin`, `end`), `inverse`. Sur la cible d'un lien, il change un 0..1 OSC en 0..durée en secondes pour la tête
+  de lecture d'une cue.
+- **Transport d'une cue** (`cue.transport`, `CueTransport`) : déclencheurs `reset`, `play`, `pause`, `finalize`,
+  `previous`, `next` ; `playing` (`Boolean`), `state` (`AnimationState`), `position` (`Seconds`), `length`, `remainingTime`,
+  `timeBeforePlay`, `timeBase`. Ses réglages de lecture (`cue.parameters`, `CuePlayParameters`) : `launchMode`
+  (`AnimationLaunchMode` : 0 Manual, 1 Restart With Activation, 2 Restart With Intensity, 3 Play With Intensity),
+  `resetEvent`, `automateTransport`, `in`, `out`, `targetLength`, `speed` (`SpeedFactor`, 0 accepté), `reverseSpeed`,
+  `playMode`, `looping`, `offset`, `syncToTempo`.
+- **Une horloge extérieure pour une cue** (mesuré, 23/11/2026) : une cue laissée **en lecture à vitesse 0** suit la position
+  qu'un lien écrit dans `transport.position`, et sa fonction y est évaluée à chaque image (FunctionCue de 4 s, LinearRamp :
+  OSC 0,25 -> 1 s -> valeur 0,25 ; 0,75 -> 3 s -> 0,75). En avant, en boucle (jamais arrêtée en atteignant sa fin), Launch
+  Mode Manual (une activation ne la relance pas) : un autre programme peut être l'horloge (pause, relance, aller-retour à lui).
+- Piège Git Bash pour tester depuis un shell : un argument qui commence par `/` (`/a/b/c`) devient un chemin Windows
+  (`C:/Program Files/Git/a/b/c`) avant d'arriver à Python : `MSYS_NO_PATHCONV=1`.
 
 ## Bugs UI connus
 
