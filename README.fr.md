@@ -772,6 +772,24 @@ enums qui exigent `.set()`.
   pas forcément l'AFFICHAGE d'une ContentMap déjà utilisée ailleurs (bug distinct) — ici on parle
   de l'évaluation/exécution du contenu de la Compo elle-même, qui elle fonctionne dès l'assignation
   du target, sans étape manuelle supplémentaire.
+- **Couleur pilotée par un pourcentage à travers un dégradé de clés (fait à la main dans l'UI SMODE, relu par script, R15,
+  23/11/2026)** : exposer une couleur dans un `ParameterBank` puis poser une fonction de type « Keyframes » sur son lien donne
+  `Parameter(Percentage)` (label vide : l'arbre l'affiche « <Élément> Color ») → `targets[0]` = `ParameterLinkTarget`
+  (`.target` = la variable `HsvColor`) → `modifiers[0]` = `FunctionLinkModifier(Percentage, HsvColor)` → `.function` =
+  `KeyframeFunction(Percentage, HsvColor)` → `.keyframes` = des `Keyframe(Percentage, HsvColor)` (`position` 0..1, `key` = une
+  `HsvColor` : `red`, `green`, `blue`, `hue`, `saturation`, `value`, `alpha`, toutes en `Percentage` ; `str(key)` = `"FF0000FF"`).
+  Les clés posées dans l'UI sont en `LinearKeyframeInterpolator` (`linkInterpolators` True) et restent dans l'ordre où on les a
+  posées (0, 1, 0,48), pas dans l'ordre des positions. **Par script, la même chaîne se construit** (vérifié sur une Compo hors
+  projet) : `Oil.createObject("FunctionLinkModifier(Percentage, HsvColor)")`, `m.function =
+  Oil.createObject("KeyframeFunction(Percentage, HsvColor)")`, des `Keyframe(Percentage, HsvColor)` ajoutées dans l'ordre des
+  positions, `linkInterpolators` False et les deux interpolateurs posés (`LinearKeyframeInterpolator`, ou
+  `StepKeyframeInterpolator` pour des paliers) ; le `ParameterLinkTarget` reçoit son modificateur avant `target.set(...)`. Le
+  Parameter ne poussant pas sa valeur de départ (voir plus haut), écrire aussi la couleur de départ dans la cible. Une
+  `FunctionCue(Percentage)` (+ `ParametricScalarFunction(Seconds, Percentage)`) sur `p.value` anime la position.
+  Où trouver une `HsvColor` : `UniformTextureGenerator.color` (Solid), `Compo.background`, `ShapeLayer.renderer.fill.color` /
+  `.stroke.color`, `PointLight.diffuse.color`, et la couleur unie d'un rendu 3D : `map.color` de `components[0]` pour
+  `SurfaceGeometryRenderer`, `map.color` du rendu lui-même pour `ThickLinesGeometryRenderer`, `TubeLinesGeometryRenderer`,
+  `SimplePointsGeometryRenderer`, `BallPointsGeometryRenderer` (leur `map` est un `UniformTextureGenerator` à la création).
 
 ## Timeline (TimelineCue)
 
@@ -1231,6 +1249,14 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   (aller-retour). La fonction ne voit le temps au-delà d'une période que si la cue dure plus longtemps : pour l'aller-retour, `targetLength` =
   2 périodes. **`cue.parameters.playMode`** (`CuePlayMode`) : 0 forward, 1 backward, 2 pingPong, 3 reversePingPong (`toString()` donne les
   noms ; pas pour `launchMode`).
+  **Ce que montre l'UI de la cue, c'est `playMode` (+ `looping`)** (23/11/2026) : un aller-retour fait par la fonction (`wrapMode` 2 sur une
+  cue de 2 périodes) bouge bien, mais le contrôle de la cue reste affiché en lecture avant, en boucle. Pour un aller-retour lisible dans SMODE :
+  `playMode` 2 (pingPong), `looping` True, `wrapMode` 1 (repeat), `targetLength` = 1 période ; une fois : `playMode` 0, `looping` False,
+  `wrapMode` 0 (clamp).
+  **Changer `playMode` / `looping` / `targetLength` pendant la lecture ne s'applique qu'au prochain départ** : `transport.reset.trig()` puis
+  `transport.play.trig()` dans le même appel relancent la cue du début (l'équivalent de la couper puis la réactiver dans l'UI). **Ne pas
+  relancer d'office une cue qui ne joue pas** : une cue sans boucle arrivée à sa fin a `transport.playing` False ; un `play.trig()` la
+  repart du début (sa timeline passe en bleu puis recommence) ; ne relancer d'office que les cues en boucle.
 - **Formes** (`Oil.createObject("<Nom>FunctionShape")`) : `LinearRamp`, `Sinus` (0 -> 1 -> 0), `Triangle`, `Square`, `Noise` (`frequency`,
   `contrast`, `type`, `seed`), `WhiteNoise` (`seed`), `Sigmoid` (`smoothing`), les easings `Sine`, `Quad`, `Cubic`, `Quart`, `Quint`, `Expo`,
   `Circ`, `Back`, `Elastic`, `Bounce` (chacun avec `easeIn` / `easeOut`, tous deux True), `SuperFormula` (`a`, `b`, `n1`..`n3`), `MidiKeyboard`.
@@ -1915,8 +1941,12 @@ pas seulement le script lui-même.
   passe par `SmodeSDK.PythonScriptInstance` (`site-packages/Smode/SmodeSDK.py`) : `ast.parse` de toute la source,
   exécution des déclarations de paramètres (les paramètres sont recréés), `ast.unparse` des autres instructions,
   `compile`, puis `exec`. En « At Every Update », c'est à chaque image, quoi que fasse le code. Le coût suit le
-  nombre de nœuds de syntaxe et de paramètres (~0,05 ms chacun) ; les commentaires ne coûtent rien, une grosse
-  chaîne littérale très peu. Mesuré : Script vide 0,1 ms ; un pont HTTP de 250 lignes avec 10 paramètres 9,4 ms par
+  nombre de nœuds de syntaxe et de paramètres (~0,05 ms chacun) ; les commentaires et une chaîne littérale coûtent peu
+  tant qu'ils restent courts, **mais le coût suit aussi leur longueur** (mesuré le 23/11/2026, parse + unparse + compile
+  dans le Python de SMODE) : 300 Ko de code gardés dans une chaîne = **10,5 ms par image** (environ 4 fps sur un projet
+  à 15-20 fps) ; 33 Ko de commentaires ≈ 0,2 ms ; un en-tête décoratif de 2 Ko ≈ 0,01 ms. La chaîne n'est donc une
+  solution que pour un code modeste : au-delà, le fichier lu une fois (ci-dessous) ; un chargeur de quelques lignes
+  avec 6 paramètres ≈ 0,4 ms. Mesuré : Script vide 0,1 ms ; un pont HTTP de 250 lignes avec 10 paramètres 9,4 ms par
   image (environ 2 fps sur un projet à 12 fps) ; un Script de 4000 lignes faisait passer un projet de 11,8 à
   6,6 fps (7,2 fps avec son corps non exécuté).
   - Gardez le code dans une chaîne exécutée une seule fois, et n'appelez qu'une fonction à chaque image (0,6 ms pour

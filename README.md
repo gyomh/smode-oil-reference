@@ -933,6 +933,24 @@ script.project.masterScene.layers.append(scene)   # last append
   reactivating the DISPLAY of a ContentMap already used elsewhere (a distinct bug) — here we are
   talking about the evaluation/execution of the Compo's own content, which does work as soon as
   the target is assigned, without any additional manual step.
+- **A colour driven by a percentage through a gradient of keys (made by hand in the SMODE UI, read back by script, R15,
+  23/11/2026)**: exposing a colour in a `ParameterBank`, then putting a function of type "Keyframes" on its link, gives
+  `Parameter(Percentage)` (empty label: the tree shows it as "<Element> Color") → `targets[0]` = `ParameterLinkTarget`
+  (`.target` = the `HsvColor` variable) → `modifiers[0]` = `FunctionLinkModifier(Percentage, HsvColor)` → `.function` =
+  `KeyframeFunction(Percentage, HsvColor)` → `.keyframes` = `Keyframe(Percentage, HsvColor)` objects (`position` 0..1, `key` = an
+  `HsvColor`: `red`, `green`, `blue`, `hue`, `saturation`, `value`, `alpha`, all `Percentage`; `str(key)` = `"FF0000FF"`).
+  Keys placed in the UI use `LinearKeyframeInterpolator` (`linkInterpolators` True) and stay in the order they were placed
+  (0, 1, 0.48), not in position order. **The same chain can be built by script** (checked on a Compo outside the project):
+  `Oil.createObject("FunctionLinkModifier(Percentage, HsvColor)")`, `m.function =
+  Oil.createObject("KeyframeFunction(Percentage, HsvColor)")`, `Keyframe(Percentage, HsvColor)` objects appended in position
+  order, `linkInterpolators` False and both interpolators set (`LinearKeyframeInterpolator`, or `StepKeyframeInterpolator` for
+  steps); the `ParameterLinkTarget` gets its modifier before `target.set(...)`. As the Parameter does not push its starting
+  value (see above), also write the starting colour into the target. A `FunctionCue(Percentage)` (+
+  `ParametricScalarFunction(Seconds, Percentage)`) on `p.value` animates the position.
+  Where an `HsvColor` lives: `UniformTextureGenerator.color` (Solid), `Compo.background`, `ShapeLayer.renderer.fill.color` /
+  `.stroke.color`, `PointLight.diffuse.color`, and the plain colour of a 3D renderer: `map.color` of `components[0]` for
+  `SurfaceGeometryRenderer`, the renderer's own `map.color` for `ThickLinesGeometryRenderer`, `TubeLinesGeometryRenderer`,
+  `SimplePointsGeometryRenderer`, `BallPointsGeometryRenderer` (their `map` is a `UniformTextureGenerator` when created).
 
 ## Timeline (TimelineCue)
 
@@ -1456,6 +1474,14 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   forth). The function only sees time beyond one period if the cue lasts longer: for back and forth, `targetLength` = 2 periods.
   **`cue.parameters.playMode`** (`CuePlayMode`): 0 forward, 1 backward, 2 pingPong, 3 reversePingPong (`toString()` gives the names; it does
   not for `launchMode`).
+  **What the cue's UI shows is `playMode` (+ `looping`)** (23/11/2026): a back-and-forth made by the function (`wrapMode` 2 over a
+  2-period cue) does move, but the cue's control still shows a forward play, looping. For a back-and-forth that reads right in SMODE:
+  `playMode` 2 (pingPong), `looping` True, `wrapMode` 1 (repeat), `targetLength` = 1 period; once: `playMode` 0, `looping` False,
+  `wrapMode` 0 (clamp).
+  **Changing `playMode` / `looping` / `targetLength` while it plays only applies at its next start**: `transport.reset.trig()` then
+  `transport.play.trig()` in the same call restart the cue from its beginning (as cutting it and switching it on again in the UI). **Do not
+  start a cue that does not play by default**: a non-looping cue that reached its end has `transport.playing` False; a `play.trig()` starts
+  it again from the beginning (its timeline goes blue, then starts over); only start looping cues by default.
 - **Shapes** (`Oil.createObject("<Name>FunctionShape")`): `LinearRamp`, `Sinus` (0 -> 1 -> 0), `Triangle`, `Square`, `Noise` (`frequency`,
   `contrast`, `type`, `seed`), `WhiteNoise` (`seed`), `Sigmoid` (`smoothing`), the easings `Sine`, `Quad`, `Cubic`, `Quart`, `Quint`, `Expo`,
   `Circ`, `Back`, `Elastic`, `Bounce` (each with `easeIn` / `easeOut`, both True), `SuperFormula` (`a`, `b`, `n1`..`n3`), `MidiKeyboard`.
@@ -2149,7 +2175,11 @@ script itself.
   `SmodeSDK.PythonScriptInstance` (`site-packages/Smode/SmodeSDK.py`): `ast.parse` of the whole source, the parameter
   declarations executed (the parameters are created again), `ast.unparse` of the other statements, `compile`, then
   `exec`. In "At Every Update" that happens on every frame, whatever the code does. The cost follows the number of
-  syntax nodes and of parameters (~0.05 ms each); comments cost nothing, one big string literal very little.
+  syntax nodes and of parameters (~0.05 ms each); comments and a string literal cost little while they stay short, **but the
+  cost also follows their length** (measured 23/11/2026, parse + unparse + compile in SMODE's Python): 300 KB of code kept
+  in a string = **10.5 ms per frame** (about 4 fps on a 15-20 fps project); 33 KB of comments ≈ 0.2 ms; a 2 KB decorative
+  header ≈ 0.01 ms. A string is only fine for modest code: beyond that, the file read once (below); a loader of a few
+  lines with 6 parameters ≈ 0.4 ms.
   Measured: empty Script 0.1 ms; a 250-line HTTP bridge with 10 parameters 9.4 ms per frame (about 2 fps on a
   project running at 12 fps); a 4000-line Script took a project from 11.8 to 6.6 fps (7.2 fps with its body not
   executed).
