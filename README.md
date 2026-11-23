@@ -1576,6 +1576,41 @@ its own layer.
   are born where the object is and the old ones live on where they were born (a natural trail). Forces and collisions then
   work in the Compo's space, not the object's.
 
+### Several renderers on one 3D layer: GroupGeometryLayerUser (R15, 23/11/2026)
+
+SMODE draws one 3D layer with several renderers when its `renderer` is a `GroupGeometryLayerUser`: its `renderers`
+vector (shown in SMODE's tree as children of the layer, e.g. "Diffuse" then "Simple Points" on a torus: the surface plus its
+vertices as points).
+
+- `renderers` accepts any geometry renderer: `SurfaceGeometryRenderer`, `PBRSurfaceGeometryRenderer`, the point / line
+  renderers, a `ReferenceGeometryLayerUser` (a material of a Material Bank), even another group.
+- The group has its own `opacity`, `activation` and `label`, no `blendingMode` (each renderer inside keeps its own).
+  Wrapping an existing renderer: put a `clone()` of it in the group (an object is never owned twice), move its opacity /
+  activation to the group and set the clone's to 1 / on, or they multiply.
+- Each renderer inside has a `label` of its own (empty by default): a script can tag its renderers there to find them again.
+- Their settings, reached through the vector (`layer.renderer.renderers[i]`): `ThickLinesGeometryRenderer.thickness`
+  (`PositivePixels`), `SimplePointsGeometryRenderer.size` (`PositiveReal`), `TubeLinesGeometryRenderer.radius` and
+  `BallPointsGeometryRenderer.ballsRadius` (`PositiveMeters`), `opacity` / `autoIlluminate` (`Percentage`): a link or a
+  Function Cue can target them like any variable.
+- Checked by script on a layer kept out of the project (wrap, add, change the kind of one, remove, unwrap): the vector
+  behaves like any other (`append`, `insert`, `removeAt`).
+
+### Draw order of 3D layers: particles above the meshes (R15, 23/11/2026)
+
+In a 3D Compo the layers are drawn from the bottom of the list to the top: the layer at the top of the list is drawn last.
+The depth test applies between layers, but the particles do not write depth. A mesh placed above the particle layer in the
+list is therefore drawn after it and covers it everywhere, even where the particles are in front of the mesh (an emitter torus
+above its particles: the particles always behind it). With the particle layer above the mesh, the depth is right (the
+particles in front of the mesh show, those behind are hidden).
+
+- Rule: a particle layer (and its Connect Points lines layer) goes **above every opaque 3D layer of its Compo**. A layer made
+  by script: `c.layers.insert(i, layer)` at the place of the first 3D layer, not `append` (which puts it at the bottom).
+- **Do not remove and remake a particle layer to move it.** A layer born on a 3D object (shared reference +
+  `EmitParticlesGeometryModifier`), removed by script 4 frames after it was rebuilt and made again 2 frames later, crashed
+  SMODE (`ACCESS_VIOLATION`, `rip=0`, on a render thread, right after its shaders were compiled). Put the layers in the right
+  place when they are made (`insert`) and make new meshes under the particles; a layer already in the wrong place is moved
+  up by hand in SMODE's tree.
+
 ## Multi-video ISF shaders, bank states, data textures (R15, 05/11/2026)
 
 Verified while building a real-time datamosh: one `IsfFileTextureModifier` receives two clips and their vector videos, at 60 FPS.

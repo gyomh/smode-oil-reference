@@ -1364,6 +1364,42 @@ garde son propre calque.
   nouvelles particules naissent là où est l'objet et les anciennes continuent leur vie là où elles sont nées (une traînée
   naturelle). Les forces et les collisions travaillent alors dans l'espace de la Compo, plus dans celui de l'objet.
 
+### Plusieurs renderers sur un calque 3D : GroupGeometryLayerUser (R15, 23/11/2026)
+
+SMODE dessine un calque 3D avec plusieurs renderers quand son `renderer` est un `GroupGeometryLayerUser` : son vecteur
+`renderers` (affiché dans l'arbre de SMODE comme enfants du calque, par exemple « Diffuse » puis « Simple Points » sur un tore :
+la surface plus ses sommets en points).
+
+- `renderers` accepte n'importe quel renderer de géométrie : `SurfaceGeometryRenderer`, `PBRSurfaceGeometryRenderer`, les
+  renderers de points / lignes, une `ReferenceGeometryLayerUser` (un matériau d'une Material Bank), et même un autre groupe.
+- Le groupe a ses propres `opacity`, `activation` et `label`, pas de `blendingMode` (chaque renderer intérieur garde le sien).
+  Pour emballer un renderer existant : mettre un `clone()` de lui dans le groupe (un objet n'est jamais possédé deux fois),
+  passer son opacité / son activation sur le groupe et remettre celles du clone à 1 / allumé, sinon elles se multiplient.
+- Chaque renderer intérieur a son propre `label` (vide par défaut) : un script peut y marquer ses renderers pour les retrouver.
+- Leurs réglages, atteints par le vecteur (`layer.renderer.renderers[i]`) : `ThickLinesGeometryRenderer.thickness`
+  (`PositivePixels`), `SimplePointsGeometryRenderer.size` (`PositiveReal`), `TubeLinesGeometryRenderer.radius` et
+  `BallPointsGeometryRenderer.ballsRadius` (`PositiveMeters`), `opacity` / `autoIlluminate` (`Percentage`) : un lien ou une
+  Function Cue les vise comme n'importe quelle variable.
+- Vérifié par script sur un calque gardé hors du projet (emballer, ajouter, changer le type de l'un, retirer, déballer) : le
+  vecteur se comporte comme les autres (`append`, `insert`, `removeAt`).
+
+### Ordre de dessin des calques 3D : les particules au-dessus des maillages (R15, 23/11/2026)
+
+Dans une Compo 3D, les calques sont dessinés du bas de la liste vers le haut : le calque en haut de la liste est dessiné en
+dernier. Le test de profondeur joue entre calques, mais les particules n'écrivent pas de profondeur. Un maillage placé au-dessus
+du calque de particules dans la liste est donc dessiné après lui et le recouvre partout, même là où les particules sont devant
+le maillage (un tore émetteur au-dessus de ses particules : les particules toujours derrière). Avec le calque de particules
+au-dessus du maillage, la profondeur est juste (les particules devant le maillage se voient, celles derrière sont cachées).
+
+- Règle : un calque de particules (et son calque de lignes Connect Points) va **au-dessus de tous les calques 3D opaques de sa
+  Compo**. Un calque créé par script : `c.layers.insert(i, layer)` à la place du premier calque 3D, pas `append` (qui le met
+  en bas).
+- **Ne pas retirer puis refaire un calque de particules pour le déplacer.** Un calque né sur un objet 3D (référence partagée +
+  `EmitParticlesGeometryModifier`), retiré par script 4 images après sa reconstruction puis refait 2 images plus tard, a fait
+  planter SMODE (`ACCESS_VIOLATION`, `rip=0`, sur un fil de rendu, pendant que ses shaders venaient d'être compilés). Placer
+  plutôt les calques au bon endroit à leur création (`insert`), et faire naître les nouveaux maillages sous les particules ;
+  un calque déjà mal rangé se remonte à la main dans l'arbre de SMODE.
+
 ## Shaders ISF à plusieurs vidéos, états de banque, données en texture (R15, 05/11/2026)
 
 Vérifié en construisant un datamosh temps réel : un `IsfFileTextureModifier` reçoit deux clips et leurs vidéos de vecteurs, à 60 FPS.
