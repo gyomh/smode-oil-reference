@@ -1321,6 +1321,31 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   renderer de points / lignes (`ThickLinesGeometryRenderer`, `SimplePointsGeometryRenderer`). Le même texte peut venir de
   l'échantillonneur de position d'un émetteur (voir plus haut) : lire l'objet fautif dans le chemin du statut.
 
+### Émettre des particules depuis un objet 3D qui bouge et change (R15, 23/11/2026)
+
+Montage : un `GeometryLayer` dont le générateur est une `ReferenceGeometryV9Generator` visant l'emplacement du générateur d'un
+autre calque (`location` 0, `elementPointer` = `layer.getVariableByName("generator")`), avec un `EmitParticlesGeometryModifier`
+(`operatorMode` 0, remplacer) dans les `modifiers` de la référence : les particules naissent sur la surface de l'objet, l'objet
+garde son propre calque.
+
+- **`referencer.shared` doit être à True.** Avec `shared` à False, la référence fait sa propre copie du générateur, figée telle
+  qu'elle était : les réglages changés ensuite sur l'original (le `ringRadius` d'un tore, la `precision`, la taille de
+  n'importe quel générateur de maillage) ne sont pas vus par les particules. Avec `shared` à True, ils sont suivis tout de
+  suite, et les modifiers de la référence ne touchent pas le calque d'origine (comme pour Connect Points plus haut).
+- **L'échelle d'un calque 3D est `layer.placement.size`** (`PositionOrientationSize3dPlacement` : `position`, `orientation`,
+  `size`, un `Size3d(Real)` avec `linked`). Il n'y a pas de `placement.scale` sur un calque 3D : `getattr` échoue ; détacher
+  `linked` avant d'écrire un seul axe.
+- **Ne pas suivre l'objet en déplaçant le calque de particules.** Recopier le placement de l'objet sur le calque de particules
+  déplace tout le nuage, particules déjà nées comprises : pas de traînée, le nuage saute avec l'objet. Déplacer plutôt la
+  géométrie émettrice, par des modifiers placés avant l'`EmitParticlesGeometryModifier`, et laisser le calque de particules à
+  l'origine :
+  - `ScaleGeometryModifier` : `.scale` est un `Size3d(Real)` (`x`, `y`, `z`, `linked` à True par défaut) ;
+  - `PlacementGeometryModifier` : `.placement` est un `PositionOrientation3dPlacement` (`position`, `orientation`, pas de
+    taille ; `operatorMode` 0).
+  Ordre dans `modifiers` : Scale, Placement, Emit Particles. Écrits à chaque image depuis le placement de l'objet, les
+  nouvelles particules naissent là où est l'objet et les anciennes continuent leur vie là où elles sont nées (une traînée
+  naturelle). Les forces et les collisions travaillent alors dans l'espace de la Compo, plus dans celui de l'objet.
+
 ## Shaders ISF à plusieurs vidéos, états de banque, données en texture (R15, 05/11/2026)
 
 Vérifié en construisant un datamosh temps réel : un `IsfFileTextureModifier` reçoit deux clips et leurs vidéos de vecteurs, à 60 FPS.

@@ -1534,6 +1534,30 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   (`ThickLinesGeometryRenderer`, `SimplePointsGeometryRenderer`). The same text can come from an emitter's position sampler
   (see above): read which object is at fault from the status path.
 
+### Emitting particles from a 3D object that moves and changes (R15, 23/11/2026)
+
+Setup: a `GeometryLayer` whose generator is a `ReferenceGeometryV9Generator` aimed at another layer's generator slot
+(`location` 0, `elementPointer` = `layer.getVariableByName("generator")`), with an `EmitParticlesGeometryModifier`
+(`operatorMode` 0 replace) in the reference's `modifiers`: the particles are born on the object's surface, the object keeps
+its own layer.
+
+- **`referencer.shared` must be True.** With `shared` False the reference makes its own copy of the generator, frozen as it
+  was: settings changed afterwards on the original (a torus's `ringRadius`, `precision`, the size of any mesh generator) are
+  not seen by the particles. With `shared` True they are followed at once, and the modifiers on the reference do not
+  touch the original layer (same as Connect Points above).
+- **The scale of a 3D layer is `layer.placement.size`** (`PositionOrientationSize3dPlacement`: `position`, `orientation`,
+  `size`, a `Size3d(Real)` with `linked`). There is no `placement.scale` on a 3D layer: `getattr` fails, untie `linked`
+  before writing one axis.
+- **Do not follow the object by moving the particle layer.** Copying the object's placement onto the particle layer moves
+  the whole cloud, particles already born included: no trail, the cloud jumps with the object. Move the emitting geometry
+  instead, with modifiers before the `EmitParticlesGeometryModifier`, and leave the particle layer at the origin:
+  - `ScaleGeometryModifier`: `.scale` is a `Size3d(Real)` (`x`, `y`, `z`, `linked` True by default);
+  - `PlacementGeometryModifier`: `.placement` is a `PositionOrientation3dPlacement` (`position`, `orientation`, no size;
+    `operatorMode` 0).
+  Order in `modifiers`: Scale, Placement, Emit Particles. Written at every frame from the object's placement, new particles
+  are born where the object is and the old ones live on where they were born (a natural trail). Forces and collisions then
+  work in the Compo's space, not the object's.
+
 ## Multi-video ISF shaders, bank states, data textures (R15, 05/11/2026)
 
 Verified while building a real-time datamosh: one `IsfFileTextureModifier` receives two clips and their vector videos, at 60 FPS.
