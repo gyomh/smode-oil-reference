@@ -2546,6 +2546,26 @@ et le réécrit depuis un éditeur de nodes externe.
   Mode Manual (une activation ne la relance pas) : un autre programme peut être l'horloge (pause, relance, aller-retour à lui).
 - Piège Git Bash pour tester depuis un shell : un argument qui commence par `/` (`/a/b/c`) devient un chemin Windows
   (`C:/Program Files/Git/a/b/c`) avant d'arriver à Python : `MSYS_NO_PATHCONV=1`.
+- **Types de valeur vers les réglages** (mesuré R15, 24/11/2026, messages envoyés de l'extérieur) : `oscReal` ->
+  `Percentage` et `oscInteger` 1 / 0 -> `Boolean` marchent tels quels.
+- **Un lien OSC vers un `Trigger` ne déclenche rien tout seul** : ni un message sans valeur (`oscVoid`), ni un `oscInteger`
+  1 tenu 300 ms puis 0 (le `Trigger` d'un `Parameter(Trigger)`, dont la chaîne `SetConstantLinkModifier` marche quand on le
+  déclenche par `value.trig()`). Mettre un **`TrigLinkModifier`** sur la cible du lien (aucun réglage) : chaque message
+  `oscVoid` le déclenche alors (à chaque fois, pas seulement le premier), et une impulsion `oscInteger` 1 / 0 aussi.
+- **Sources de lien d'appareil qui existent** (chaînes de `api-Oil.dll` / `api-Smode.dll`) : `SinglePrecisionDeviceLinkSource`,
+  `ValueAndSpeedDeviceLinkSource`, `AVDeviceLinkSource` ; aucune source faite pour les événements.
+- **Modifiers de lien qui existent** (mêmes chaînes) : `Absolute`, `Clamp`, `Derivative` (`gain`, `bypassModifierAboveDelta`),
+  `Disable`, `Divide`, `Dynamic`, `Enable`, `Floor`, `Function`, `Inertia`, `Invert`, `Maximum`, `Minimum`, `Modulo`,
+  `Multiply`, `NumberBased`, `Offset`, `Power`, `Remap`, `SetConstant`, `Smooth`, `ToPercentage`, `ToString`, `Toggle`,
+  `Trig` (+ `LinkModifier`). Lister les variables d'un objet : `getNumVariables()` / `getVariableName(i)` / `getVariable(i)`.
+- **Coût de la réception** (mesuré R15, 24/11/2026, projet déjà à ~50 images/s et 145 % de charge) : environ 1000 messages
+  OSC par seconde qu'aucun lien n'écoute (bundles de ~45 messages, ~90 par seconde) l'ont fait passer de ~50,4-51,3 à
+  ~47 images/s ; moitié moins de bundles, ~48,3. SMODE lit chaque message reçu : ne lui envoyer que ce qu'il utilise.
+- **Lire la cadence par script** : `engine.status.frame` (`FrameInformation`) : `number` (compteur d'images), `time`,
+  `deltaTime`, `rate` (`FramePerSecond`) ; deux lectures de `number` à quelques secondes d'écart donnent la vraie cadence.
+  `engine.status` : `cpuConsumption`, `gpuConsumption`, `consumption` (`UnboundedPercentage`, 1.0 = le budget d'une image),
+  `systemRamUsage`, `currentProjectPath`. `lastReceivedMessage` de l'appareil OSC n'a pas montré les messages qu'aucun
+  lien n'écoute (il gardait le dernier message relié).
 
 ## Un réglage exposé en pourcentage, animé par une cue (R15, 24/11/2026)
 

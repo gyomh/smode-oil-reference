@@ -2761,6 +2761,26 @@ and writes it back from an external node editor.
   Manual (an activation does not restart it): another program can be the clock (pause, restart, back and forth are its own).
 - Git Bash trap when testing from a shell: an argument starting with `/` (`/a/b/c`) is turned into a Windows path
   (`C:/Program Files/Git/a/b/c`) before reaching Python: `MSYS_NO_PATHCONV=1`.
+- **Value types onto settings** (measured R15, 24/11/2026, messages sent from outside): `oscReal` -> `Percentage` and
+  `oscInteger` 1 / 0 -> `Boolean` work as they are.
+- **An OSC link onto a `Trigger` fires nothing by itself**: neither a message without value (`oscVoid`) nor an `oscInteger`
+  1 held 300 ms then 0 (the `Trigger` of a `Parameter(Trigger)`, whose own `SetConstantLinkModifier` chain works when
+  fired by `value.trig()`). Put a **`TrigLinkModifier`** on the link target (no setting of its own): then every
+  `oscVoid` message fires it (again and again, not only the first), and an `oscInteger` 1 / 0 pulse fires it too.
+- **Device link sources that exist** (strings of `api-Oil.dll` / `api-Smode.dll`): `SinglePrecisionDeviceLinkSource`,
+  `ValueAndSpeedDeviceLinkSource`, `AVDeviceLinkSource`; no source made for events.
+- **Link modifiers that exist** (same strings): `Absolute`, `Clamp`, `Derivative` (`gain`, `bypassModifierAboveDelta`),
+  `Disable`, `Divide`, `Dynamic`, `Enable`, `Floor`, `Function`, `Inertia`, `Invert`, `Maximum`, `Minimum`, `Modulo`,
+  `Multiply`, `NumberBased`, `Offset`, `Power`, `Remap`, `SetConstant`, `Smooth`, `ToPercentage`, `ToString`, `Toggle`,
+  `Trig` (+ `LinkModifier`). List an object's variables with `getNumVariables()` / `getVariableName(i)` / `getVariable(i)`.
+- **Cost of receiving** (measured R15, 24/11/2026, a project already at ~50 fps and 145 % load): about 1000 OSC messages
+  a second that no link listens to (bundles of ~45 messages, ~90 a second) took it from ~50.4-51.3 to ~47 fps; half the
+  bundles, ~48.3 fps. SMODE parses every message it receives: send it only what it uses.
+- **Reading the frame rate by script**: `engine.status.frame` (`FrameInformation`): `number` (frame counter), `time`,
+  `deltaTime`, `rate` (`FramePerSecond`); two reads of `number` a few seconds apart give the real fps.
+  `engine.status`: `cpuConsumption`, `gpuConsumption`, `consumption` (`UnboundedPercentage`, 1.0 = the frame's budget),
+  `systemRamUsage`, `currentProjectPath`. `lastReceivedMessage` of the OSC device did not show messages that no link
+  listens to (it kept showing the last linked one).
 
 ## A setting exposed as a percentage, animated by a cue (R15, 24/11/2026)
 
