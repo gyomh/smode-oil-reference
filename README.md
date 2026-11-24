@@ -48,6 +48,7 @@
 - [Video export from a script](#video-export-from-a-script-r15-11102026)
 - [Findings of a full mirror of the tree (Node Editor agent)](#findings-of-a-full-mirror-of-the-tree-node-editor-agent-r15-13-16112026)
 - [OSC input: links driven by OSC messages](#osc-input-links-driven-by-osc-messages-r15-23112026)
+- [A setting exposed as a percentage, animated by a cue](#a-setting-exposed-as-a-percentage-animated-by-a-cue-r15-24112026)
 - [Known UI bugs](#known-ui-bugs)
 - [Observed instabilities](#observed-instabilities)
 - [The MCP bridge (reminder)](#the-mcp-bridge-reminder)
@@ -2760,6 +2761,30 @@ and writes it back from an external node editor.
   Manual (an activation does not restart it): another program can be the clock (pause, restart, back and forth are its own).
 - Git Bash trap when testing from a shell: an argument starting with `/` (`/a/b/c`) is turned into a Windows path
   (`C:/Program Files/Git/a/b/c`) before reaching Python: `MSYS_NO_PATHCONV=1`.
+
+## A setting exposed as a percentage, animated by a cue (R15, 24/11/2026)
+
+Read by script on a setting exposed by hand in the SMODE UI (an object's rotation X, from 0 % = 0° to 100 % = 360°, a
+timeline making it turn):
+
+- **The exposed Parameter**: a `Parameter(Percentage)` (`expose` = `True`, empty label) that SMODE put in the **first
+  `ParameterBank` of Show's tools** (it may be a bank another tool made: look for it by what it drives, not by its bank).
+  Its variables: `activation`, `applyNow`, `editable`, `expose`, `label`, `liveStatus`, `loading`, `modifiers`, `preset`,
+  `solo`, `targets`, `value`.
+- **Its link to the setting**: one `ParameterLinkTarget` (`target` = the setting, e.g. an `Angle`) whose `modifiers[0]` is a
+  `FunctionLinkModifier(Percentage, Angle)`; its `function` a `KeyframeFunction(Percentage, Angle)` with two `keyframes`
+  (`Keyframe(Percentage, Angle)`: `position` 0 → `key` 0, `position` 1 → `key` 6.2832, radians). A keyframe has `position`,
+  `key`, `inputInterpolator`, `outputInterpolator`, `linkInterpolators`, `priority`. Made by script, set the interpolators
+  (`LinearKeyframeInterpolator`) after `linkInterpolators.set(False)`, as for colour gradients.
+- **The animation**: a `FunctionCue(Percentage)` (empty label) of an `AnimationBank` whose target is the Parameter's
+  `value`, its `ParametricScalarFunction(Seconds, Percentage)` going 0..1 (`LinearRamp`, phase 0.5, period 3 s here). The
+  values of the setting stay in the link (0 % / 100 %), the shape and the time in the cue: the project reads well without
+  any script.
+- **Who owns a variable**: a variable has no owner method. `v.getFriendlyName()` gives its own name (`"Value"` for a
+  Parameter's value, `"X"` for a rotation axis), `v.sourceElements()` the elements pointing at it (here the cue's
+  `ParameterLinkTarget`), `v.sourcePointers()` their `WeakPointer`s. To find the Parameter, walk the `ParameterBank`s and
+  compare `p.value is v` (wrappers keep their identity). `getVariableName` takes an index (`getVariableName(i)`), not
+  the variable.
 
 ## Known UI bugs
 

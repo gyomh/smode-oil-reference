@@ -46,6 +46,7 @@
 - [Export vidéo depuis un script](#export-vidéo-depuis-un-script-r15-11102026)
 - [Découvertes d'un miroir complet de l'arbre (agent du Node Editor)](#découvertes-dun-miroir-complet-de-larbre-agent-du-node-editor-r15-13-16112026)
 - [Entrée OSC : liens pilotés par des messages OSC](#entrée-osc--liens-pilotés-par-des-messages-osc-r15-23112026)
+- [Un réglage exposé en pourcentage, animé par une cue](#un-réglage-exposé-en-pourcentage-animé-par-une-cue-r15-24112026)
 - [Bugs UI connus](#bugs-ui-connus)
 - [Instabilités observées](#instabilités-observées)
 - [Le pont MCP (rappel)](#le-pont-mcp-rappel)
@@ -2545,6 +2546,29 @@ et le réécrit depuis un éditeur de nodes externe.
   Mode Manual (une activation ne la relance pas) : un autre programme peut être l'horloge (pause, relance, aller-retour à lui).
 - Piège Git Bash pour tester depuis un shell : un argument qui commence par `/` (`/a/b/c`) devient un chemin Windows
   (`C:/Program Files/Git/a/b/c`) avant d'arriver à Python : `MSYS_NO_PATHCONV=1`.
+
+## Un réglage exposé en pourcentage, animé par une cue (R15, 24/11/2026)
+
+Lu par script sur un réglage exposé à la main dans l'interface de SMODE (la rotation X d'un objet, de 0 % = 0° à 100 % =
+360°, une timeline qui la fait tourner) :
+
+- **Le Parameter exposé** : un `Parameter(Percentage)` (`expose` = `True`, label vide) que SMODE a mis dans la **première
+  `ParameterBank` des outils du Show** (ce peut être une banque faite par un autre outil : le chercher par ce qu'il pilote,
+  pas par sa banque). Ses variables : `activation`, `applyNow`, `editable`, `expose`, `label`, `liveStatus`, `loading`,
+  `modifiers`, `preset`, `solo`, `targets`, `value`.
+- **Son lien vers le réglage** : un `ParameterLinkTarget` (`target` = le réglage, ici un `Angle`) dont `modifiers[0]` est un
+  `FunctionLinkModifier(Percentage, Angle)` ; sa `function` une `KeyframeFunction(Percentage, Angle)` à deux `keyframes`
+  (`Keyframe(Percentage, Angle)` : `position` 0 → `key` 0, `position` 1 → `key` 6,2832, en radians). Une clé a `position`,
+  `key`, `inputInterpolator`, `outputInterpolator`, `linkInterpolators`, `priority`. Faite par script, poser les
+  interpolateurs (`LinearKeyframeInterpolator`) après `linkInterpolators.set(False)`, comme pour les dégradés de couleur.
+- **L'animation** : une `FunctionCue(Percentage)` (label vide) d'une `AnimationBank`, sa cible la `value` du Parameter, sa
+  `ParametricScalarFunction(Seconds, Percentage)` allant de 0 à 1 (`LinearRamp`, phase 0,5, période 3 s ici). Les valeurs
+  du réglage restent dans le lien (0 % / 100 %), la forme et le temps dans la cue : le projet se lit bien sans script.
+- **À qui appartient une variable** : une variable n'a pas de méthode « propriétaire ». `v.getFriendlyName()` donne son
+  propre nom (`"Value"` pour la valeur d'un Parameter, `"X"` pour un axe de rotation), `v.sourceElements()` les éléments
+  qui la visent (ici le `ParameterLinkTarget` de la cue), `v.sourcePointers()` leurs `WeakPointer`. Pour trouver le
+  Parameter, parcourir les `ParameterBank` et comparer `p.value is v` (les wrappers gardent leur identité).
+  `getVariableName` prend un indice (`getVariableName(i)`), pas la variable.
 
 ## Bugs UI connus
 
