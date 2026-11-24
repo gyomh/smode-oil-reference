@@ -1456,8 +1456,14 @@ Built from a Blender FBX (`Apply Transform`, `FBX_SCALE_ALL`: metres, Y up) for 
   (`frequency` 10, `contrast`, `type` 0 simplex / 1 perlin), `function.parameters` (`minimum`, `maximum`, `period`, `phase`, `offset`,
   `wrapMode`, `repetitions`), `cue.parameters` (`looping`, `targetLength`, `speed`, `launchMode`), `animationBank.animations.append(cue)`,
   `cue.targets.append(ParameterLinkTarget)` with `.target.set(param)`, then `cue.transport.play.trig()` in a later call.
-- **Linear ramp needs `phase` = 0.5**: it then starts at `minimum` and goes min -> max in one `period`; with phase 0 it started mid-range at half
-  slope (measured on the real output; reading the parameters back proved nothing). `wrapMode` 1 repeat = abrupt return (scope flyback).
+- **Every shape needs `phase` = 0.5** (`phase` is a `Percentage`; measured on all the shapes below, 24/11/2026, the cue's
+  play head moved step by step over one `period`): then the shape plays whole over one period, as its usual curve
+  (`LinearRamp` min -> max, `Sinus` min -> max -> min, `Triangle`, `Square` min then max at mid-period, the easings in-out
+  from min to max). With phase 0 every shape plays **only its second half, stretched over the period**: `LinearRamp`
+  starts mid-range at half slope, `Sinus` and `Triangle` go from max down to min, the easings from mid-range up. With
+  phase 0.25 a `Sinus` rises over the first quarter and falls over the rest: the phase is not a plain time shift. A
+  `FunctionCue(Percentage)` clamps its output to 0..1 (`Back`, `Elastic` lose what overshoots). Reading the parameters
+  back proves nothing: measure the output. `wrapMode` 1 repeat = abrupt return (scope flyback).
 - A linked `Parameter` does NOT forward to its own targets when a cue writes into its `.value` (the link only reacts to UI changes): link the cue
   straight to the final target. `timeline.parameterTracks` is a Map (`.items()`, no index): neutralise a track with `function.keyframes.clear()`
   + `activation.set(False)`.

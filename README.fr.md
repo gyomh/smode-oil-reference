@@ -1231,8 +1231,14 @@ Construit depuis un FBX Blender (`Apply Transform`, `FBX_SCALE_ALL` : mètres, Y
   (`frequency` 10, `contrast`, `type` 0 simplex / 1 perlin), `function.parameters` (`minimum`, `maximum`, `period`, `phase`, `offset`,
   `wrapMode`, `repetitions`), `cue.parameters` (`looping`, `targetLength`, `speed`, `launchMode`), `animationBank.animations.append(cue)`,
   `cue.targets.append(ParameterLinkTarget)` avec `.target.set(param)`, puis `cue.transport.play.trig()` dans un appel suivant.
-- **La rampe linéaire exige `phase` = 0,5** : elle part alors de `minimum` et va de min à max en une `period` ; avec la phase à 0 elle partait du milieu à
-  demi-pente (mesuré sur la sortie réelle ; relire les paramètres ne prouvait rien). `wrapMode` 1 repeat = retour brutal (retour de faisceau).
+- **Toutes les formes exigent `phase` = 0,5** (`phase` est un `Percentage` ; mesuré sur toutes les formes ci-dessous, 24/11/2026, la tête
+  de lecture de la cue déplacée pas à pas sur une `period`) : la forme est alors jouée en entier sur une période, comme sa courbe habituelle
+  (`LinearRamp` de min à max, `Sinus` min -> max -> min, `Triangle`, `Square` min puis max à mi-période, les courbes in-out de min à max).
+  Avec la phase à 0, chaque forme ne joue **que sa seconde moitié, étirée sur la période** : `LinearRamp` part du milieu à demi-pente,
+  `Sinus` et `Triangle` descendent du max au min, les courbes montent depuis le milieu. Avec la phase à 0,25 un `Sinus` monte sur le
+  premier quart et redescend sur le reste : la phase n'est pas un simple décalage dans le temps. Une `FunctionCue(Percentage)` borne sa
+  sortie à 0..1 (`Back`, `Elastic` perdent ce qui dépasse). Relire les paramètres ne prouve rien : mesurer la sortie. `wrapMode` 1
+  repeat = retour brutal (retour de faisceau).
 - Un `Parameter` lié NE retransmet PAS à ses propres cibles quand une cue écrit dans sa `.value` (le lien ne réagit qu'à un changement venu de l'interface) :
   lier la cue directement à la cible finale. `timeline.parameterTracks` est une Map (`.items()`, pas d'index) : neutraliser une piste avec
   `function.keyframes.clear()` + `activation.set(False)`.
