@@ -2767,6 +2767,11 @@ and writes it back from an external node editor.
   1 held 300 ms then 0 (the `Trigger` of a `Parameter(Trigger)`, whose own `SetConstantLinkModifier` chain works when
   fired by `value.trig()`). Put a **`TrigLinkModifier`** on the link target (no setting of its own): then every
   `oscVoid` message fires it (again and again, not only the first), and an `oscInteger` 1 / 0 pulse fires it too.
+- **An OSC link writes only when a message arrives** (measured R15, 24/11/2026): a value set by script after a message
+  (a `Boolean` set back to `False`, a `Percentage` changed) is still there a second later; the same message sent again
+  writes again (an `oscInteger` 1 puts the `Boolean` back to `True`). So a script may set back a `Boolean` an OSC link
+  ticked (a trigger slot). An `oscVoid` message through `TrigLinkModifier` + `SetConstantLinkModifier` (`True`) on a
+  `Boolean` target ticks it at every message too.
 - **Device link sources that exist** (strings of `api-Oil.dll` / `api-Smode.dll`): `SinglePrecisionDeviceLinkSource`,
   `ValueAndSpeedDeviceLinkSource`, `AVDeviceLinkSource`; no source made for events.
 - **Link modifiers that exist** (same strings): `Absolute`, `Clamp`, `Derivative` (`gain`, `bypassModifierAboveDelta`),

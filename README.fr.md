@@ -2552,6 +2552,11 @@ et le réécrit depuis un éditeur de nodes externe.
   1 tenu 300 ms puis 0 (le `Trigger` d'un `Parameter(Trigger)`, dont la chaîne `SetConstantLinkModifier` marche quand on le
   déclenche par `value.trig()`). Mettre un **`TrigLinkModifier`** sur la cible du lien (aucun réglage) : chaque message
   `oscVoid` le déclenche alors (à chaque fois, pas seulement le premier), et une impulsion `oscInteger` 1 / 0 aussi.
+- **Un lien OSC n'écrit que quand un message arrive** (mesuré R15, 24/11/2026) : une valeur écrite par script après un
+  message (un `Boolean` remis à `False`, un `Percentage` changé) est toujours là une seconde plus tard ; le même message
+  renvoyé écrit de nouveau (un `oscInteger` 1 remet le `Boolean` à `True`). Un script peut donc remettre à `False` une case
+  qu'un lien OSC a cochée (une prise de déclenchement). Un message `oscVoid` à travers `TrigLinkModifier` +
+  `SetConstantLinkModifier` (`True`) sur une cible `Boolean` la coche aussi à chaque message.
 - **Sources de lien d'appareil qui existent** (chaînes de `api-Oil.dll` / `api-Smode.dll`) : `SinglePrecisionDeviceLinkSource`,
   `ValueAndSpeedDeviceLinkSource`, `AVDeviceLinkSource` ; aucune source faite pour les événements.
 - **Modifiers de lien qui existent** (mêmes chaînes) : `Absolute`, `Clamp`, `Derivative` (`gain`, `bypassModifierAboveDelta`),
