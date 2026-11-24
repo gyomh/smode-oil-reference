@@ -1381,6 +1381,9 @@ garde son propre calque.
 - **L'échelle d'un calque 3D est `layer.placement.size`** (`PositionOrientationSize3dPlacement` : `position`, `orientation`,
   `size`, un `Size3d(Real)` avec `linked`). Il n'y a pas de `placement.scale` sur un calque 3D : `getattr` échoue ; détacher
   `linked` avant d'écrire un seul axe.
+- **Laisser l'échelle de l'objet émetteur à 1 et le dimensionner par ses propres réglages** (vu sur un tore, 24/11/2026).
+  Avec une échelle du calque sous 1, les particules ne suivent plus les changements du maillage : elles ne s'y adaptent
+  plus. Garder l'échelle à 1 et régler la forme par son générateur (`TorusGeometryGenerator.ringRadius` et `.thickness`).
 - **Ne pas suivre l'objet en déplaçant le calque de particules.** Recopier le placement de l'objet sur le calque de particules
   déplace tout le nuage, particules déjà nées comprises : pas de traînée, le nuage saute avec l'objet. Déplacer plutôt la
   géométrie émettrice, par des modifiers placés avant l'`EmitParticlesGeometryModifier`, et laisser le calque de particules à

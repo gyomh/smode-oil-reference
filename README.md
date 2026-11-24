@@ -1594,6 +1594,9 @@ its own layer.
 - **The scale of a 3D layer is `layer.placement.size`** (`PositionOrientationSize3dPlacement`: `position`, `orientation`,
   `size`, a `Size3d(Real)` with `linked`). There is no `placement.scale` on a 3D layer: `getattr` fails, untie `linked`
   before writing one axis.
+- **Keep the emitting object's scale at 1; size it with its own settings** (seen on a torus, 24/11/2026). With the
+  layer's scale below 1, the particles stop following the changes of the mesh: they no longer adapt to it. Leave the
+  scale at 1 and size the shape with its generator's settings (`TorusGeometryGenerator.ringRadius` and `.thickness`).
 - **Do not follow the object by moving the particle layer.** Copying the object's placement onto the particle layer moves
   the whole cloud, particles already born included: no trail, the cloud jumps with the object. Move the emitting geometry
   instead, with modifiers before the `EmitParticlesGeometryModifier`, and leave the particle layer at the origin:
