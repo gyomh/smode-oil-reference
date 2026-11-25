@@ -1451,6 +1451,10 @@ Vérifié en construisant un datamosh temps réel : un `IsfFileTextureModifier` 
   `CustomEnumeration`, `event` = `IsfEvent` (`.trig()`).
 - `Percentage` : `set(0.35)` mais `toString()` renvoie `35.000` (diviser par 100 à la relecture). `CustomEnumeration` : `set("Motion First")` par le texte du menu,
   `toString()` renvoie ce texte, `.enumerators` liste les `CustomEnumerator` (`label`, `value`).
+- **Piloter un `Percentage` de shader depuis un `Parameter(Percentage)` exposé (24/11/2026)** : un `ParameterLinkTarget` sur la variable
+  du shader avec un `FunctionLinkModifier(Percentage, Percentage)` dont les deux clés (position 0 et 1) portent les valeurs **comme
+  `set()` les prend** (0..1, pas le x100 de `toString()`) : une valeur OSC de 0.8 sur le Parameter (clés 0 → 0, 1 → 1) relue 0.8 sur le
+  shader aussitôt. Vider les cibles du Parameter laisse le shader à la dernière valeur écrite par le lien.
 - Réinstaller le modifier (`removeAt` + nouvel objet) détruit ses liens : les refaire, quelques frames plus tard, le temps que les variables existent.
 - **Taille de référence du projet (R15, 19/11/2026)** : une `Scene` (le Show compris) n'a pas de `rasterizer` (`AttributeError`). La taille se lit
   sur la Content Map : `project.pipeline.contentMaps[0].rasterizer.resolution` (ou `.rootArea.resolution`), `width` / `height` (1920 x 1080).
@@ -1789,7 +1793,10 @@ une variable détruit l'ancien paramètre (nouvel objet, valeur par défaut).
 - **Vu autrement après un remplacement de code (R15, 30/10/2026)** : `tool.script.sourceCode.set(nouveauSource)` sur un Script
   dont l'utilisateur avait changé les options (N Bands = 10) les a remises aux défauts écrits dans le nouveau source (64).
   Après avoir remplacé le code d'un Script qui a des réglages, les relire et les reposer par `dynamicVariables`, puis
-  `execute.trig()`.
+  `execute.trig()`. **Revu (R15, 24/11/2026)** : un chargeur dont les réglages déclarés sont passés de 59 à 9 (mêmes noms
+  gardés pour les 9), son texte remplacé par `sourceCode.set` : toutes les valeurs sont revenues à leur défaut, celles des
+  réglages gardés comprises (un graphe JSON et ses liaisons, des `Oil.String`) : perdues. Avant de changer les réglages
+  déclarés d'un Script en service, copier ses valeurs ailleurs et les reposer après.
 - Libellé affiché = nom de variable : camelCase coupé en mots, **espace inséré avant un chiffre**
   (`bone3Rotation` → « Bone 3Rotation », `boneRotation3` → « Bone Rotation 3 », `BONE3Rotation` →
   inchangé). Impossible d'obtenir « Bone3 Rotation » ni un numéro dynamique côté Script ; le libellé
@@ -2163,6 +2170,10 @@ registre qu'aucune remise à zéro des globals ne touche (`sys.modules`, par ex.
 types.ModuleType(...)`), arrêter ce qui sert le port avant de démarrer, et `allow_reuse_address = False` sur la classe du
 serveur pour qu'un port encore pris échoue franchement. Pour trouver les copies : `gc.get_objects()` filtré sur les clés
 du dict d'état.
+**Revu (R15, 24/11/2026)** : un Script dont le nouveau code ne démarre plus aucun serveur avait encore deux serveurs de
+son ancien code qui répondaient (deux ports), démarrés avant que ce code les range dans un registre : rien de ce que tient
+le nouveau code ne les atteint. Trouvés par le nom de leur classe (`type(o).__name__` sur `gc.get_objects()`), fermés par
+`shutdown()` + `server_close()` ; sinon ils vivent jusqu'au redémarrage de SMODE.
 
 - **Script en Launch Mode « At Every Update »** : il démarre une fois un `ThreadingHTTPServer` sur `127.0.0.1`
   (état gardé dans un global, ex. `_FMG`) puis, à chaque frame, traite une `queue.Queue` de tâches Oil.
@@ -2580,6 +2591,32 @@ et le réécrit depuis un éditeur de nodes externe.
   `engine.status` : `cpuConsumption`, `gpuConsumption`, `consumption` (`UnboundedPercentage`, 1.0 = le budget d'une image),
   `systemRamUsage`, `currentProjectPath`. `lastReceivedMessage` de l'appareil OSC n'a pas montré les messages qu'aucun
   lien n'écoute (il gardait le dernier message relié).
+
+## Sortie OSC : SMODE envoie des valeurs tout seul (R15, 24/11/2026)
+
+- **`OscPacketSender`** (un outil, « Osc Packet Sender » de SMODE, lu sur un fait à la main dans les outils d'une Compo) :
+  envoie un message OSC à l'adresse distante d'un appareil OSC, sans script. Ses variables : `device`
+  (`OscDeviceSelector` : `deviceName` = le nom de l'appareil dans SMODE, `factory` `"Remote Osc Control"`, `address`),
+  `address` (`String`, le chemin OSC), `type` (`OscValueType` : 0 void, 1 entier, 2 texte, 3 réel, 4 blob, 5 couleur),
+  les valeurs `integerValue`, `realValue`, `stringValue`, `colorValue` (`HsvColor`), `blobContent`, `additionalValues`
+  (`OwnedVector(OscMessageValue)` : d'autres arguments), `send` (`ConditionalTrigger` : `trig`, `condition`
+  (`TriggerCondition`, 1 = « On Change » : envoyé à chaque changement de la valeur), `sendAtActivation`), `runOnServer`.
+- Il envoie à l'adresse distante de l'appareil : un appareil affiché `127.0.0.1:6000<->127.0.0.1:5000` reçoit sur 6000
+  et envoie vers 5000. Relier une valeur de SMODE à la valeur de l'envoyeur (un lien, pas de script) l'envoie à chaque
+  changement : un programme hors de SMODE l'apprend sans rien demander (le nombre de particules d'un émetteur,
+  `particlesCount`). **Mesuré, construit par script (R15, 24/11/2026)** : un `OscPacketSender` ajouté aux `tools` d'une
+  Compo (`device.deviceName`, `address`, `type` 1, `send.condition` 1), et dans une `LinkBank` des mêmes outils un `Link`
+  dont la `source` est un `ParameterLinkSource` (`target.set(sim.emissionParameters.particlesCount)`) et la cible un
+  `ParameterLinkTarget` sur `integerValue` de l'envoyeur : le nombre arrive en `/adresse <int>` au port distant de
+  l'appareil, environ un message par image tant qu'il change (600 en 10 s à 60 i/s), rien quand il ne change pas. Aucun
+  script ne tourne pour ça.
+- **Le même `Link` (`ParameterLinkSource` -> `ParameterLinkTarget`) fait suivre une valeur par une autre, sans script**
+  (mesuré R15, 24/11/2026) : `placement.orientation.x` d'un objet animé relié à `placement.orientation.x` d'un
+  `PlacementGeometryModifier` : égaux à chaque lecture pendant qu'il tourne. Neuf liens de ce genre (taille, position,
+  orientation x y z) remplacent une copie Python à chaque image. Un lien écrit quand sa source change : recopier une fois la
+  valeur du moment en le créant.
+- `SinglePrecisionDeviceLinkTarget` (une cible de lien avec `device`, `controllerIdentifier`, `lastSetValue`) existe
+  aussi : un lien qui écrit vers un contrôleur d'appareil. Pas encore essayé.
 
 ## Un réglage exposé en pourcentage, animé par une cue (R15, 24/11/2026)
 

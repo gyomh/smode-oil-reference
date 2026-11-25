@@ -1662,6 +1662,10 @@ Verified while building a real-time datamosh: one `IsfFileTextureModifier` recei
   `CustomEnumeration`, `event` = `IsfEvent` (`.trig()`).
 - `Percentage`: `set(0.35)` but `toString()` returns `35.000` (divide by 100 when reading). `CustomEnumeration`: `set("Motion First")` by menu text, `toString()` returns that text,
   `.enumerators` lists the `CustomEnumerator` objects (`label`, `value`).
+- **Driving a shader `Percentage` from an exposed `Parameter(Percentage)` (24/11/2026)**: a `ParameterLinkTarget` on the shader variable
+  with a `FunctionLinkModifier(Percentage, Percentage)` whose two keys (position 0 and 1) hold the values **as `set()` takes them**
+  (0..1, not the x100 of `toString()`): an OSC value 0.8 on the Parameter (keys 0 → 0, 1 → 1) read back 0.8 on the shader at once.
+  Removing the Parameter's targets leaves the shader at the last value the link wrote.
 - Reinstalling the modifier (`removeAt` + new object) destroys its links: rebuild them a few frames later, once the variables exist.
 - **Reference size of the project (R15, 19/11/2026)**: a `Scene` (the Show included) has no `rasterizer` (`AttributeError`). Read the size
   on the Content Map: `project.pipeline.contentMaps[0].rasterizer.resolution` (or `.rootArea.resolution`), `width` / `height` (1920 x 1080).
@@ -2018,6 +2022,10 @@ change; renaming a variable destroys the old parameter (new object, default valu
 - **Seen otherwise after a code replacement (R15, 30/10/2026)**: `tool.script.sourceCode.set(newSource)` on a Script whose
   options the user had changed (N Bands = 10) put them back to the defaults written in the new source (64). After replacing
   the code of a Script that has settings, read them back and set them again through `dynamicVariables`, then `execute.trig()`.
+  **Seen again (R15, 24/11/2026)**: a loader whose declared settings were cut from 59 to 9 (same names kept for the 9),
+  its text replaced through `sourceCode.set`: every value went back to its default, the kept ones included (a JSON graph
+  and its bindings, both `Oil.String`): lost. Before changing the declared settings of a Script in use, copy its values
+  out (or keep them elsewhere) and write them back after.
 - Displayed label = variable name: camelCase split into words, **space inserted before a digit**
   (`bone3Rotation` → "Bone 3Rotation", `boneRotation3` → "Bone Rotation 3", `BONE3Rotation` →
   unchanged). Impossible to get "Bone3 Rotation" or a dynamic number on the Script side; the
@@ -2398,6 +2406,10 @@ Windows that lets a **second server bind the same port**: the old one, whose sta
 `sys.modules["_my_registry"] = types.ModuleType(...)`), stop whatever serves the port before starting, and set
 `allow_reuse_address = False` on the server class so a port still held fails loudly. To find the copies:
 `gc.get_objects()` filtered on the keys of the state dict.
+**Seen again (R15, 24/11/2026)**: a Script whose new code starts no server at all still had two servers of its former
+code answering (two ports), started before that code kept them in a registry: nothing the new code holds reaches them.
+Found by the name of their class (`type(o).__name__` over `gc.get_objects()`), closed with `shutdown()` +
+`server_close()`; otherwise they live until SMODE restarts.
 
 - **Script in Launch Mode "At Every Update"**: it starts a `ThreadingHTTPServer` on `127.0.0.1` once (state kept in a
   global, e.g. `_FMG`) then, on every frame, processes a `queue.Queue` of Oil tasks.
@@ -2795,6 +2807,30 @@ and writes it back from an external node editor.
   `engine.status`: `cpuConsumption`, `gpuConsumption`, `consumption` (`UnboundedPercentage`, 1.0 = the frame's budget),
   `systemRamUsage`, `currentProjectPath`. `lastReceivedMessage` of the OSC device did not show messages that no link
   listens to (it kept showing the last linked one).
+
+## OSC output: SMODE sends values by itself (R15, 24/11/2026)
+
+- **`OscPacketSender`** (a tool, SMODE's « Osc Packet Sender », read on one made by hand in a Compo's tools): sends one
+  OSC message to an OSC device's remote address, with no script. Its variables: `device` (`OscDeviceSelector`:
+  `deviceName` = the device's name in SMODE, `factory` `"Remote Osc Control"`, `address`), `address` (`String`, the OSC
+  path), `type` (`OscValueType`: 0 void, 1 integer, 2 string, 3 real, 4 blob, 5 color), the values `integerValue`,
+  `realValue`, `stringValue`, `colorValue` (`HsvColor`), `blobContent`, `additionalValues`
+  (`OwnedVector(OscMessageValue)`: more arguments), `send` (`ConditionalTrigger`: `trig`, `condition`
+  (`TriggerCondition`, 1 = « On Change »: sent whenever the value changes), `sendAtActivation`), `runOnServer`.
+- The device's remote address is where it goes: a device shown `127.0.0.1:6000<->127.0.0.1:5000` receives on 6000
+  and sends to 5000. Link a value of SMODE to the sender's value (a link, no script) and it is sent at each change:
+  a program outside SMODE learns it without asking (the number of particles of an emitter, `particlesCount`).
+  **Measured, built by script (R15, 24/11/2026)**: `OscPacketSender` appended to a Compo's `tools` (`device.deviceName`,
+  `address`, `type` 1, `send.condition` 1), and in a `LinkBank` of the same tools a `Link` whose `source` is a
+  `ParameterLinkSource` (`target.set(sim.emissionParameters.particlesCount)`) and whose target is a `ParameterLinkTarget`
+  on the sender's `integerValue`: the count arrives as `/address <int>` at the device's remote port, about one message
+  per frame while it changes (600 in 10 s at 60 fps), nothing while it does not. No script runs for it.
+- **The same `Link` (`ParameterLinkSource` -> `ParameterLinkTarget`) makes one value follow another, no script**
+  (measured R15, 24/11/2026): an animated object's `placement.orientation.x` linked to a `PlacementGeometryModifier`'s
+  `placement.orientation.x`: equal at every read while it turns. Nine such links (size, position, orientation x y z)
+  replace a Python copy at every frame. A link writes when its source changes: copy the value of now once when made.
+- `SinglePrecisionDeviceLinkTarget` (a link target with `device`, `controllerIdentifier`, `lastSetValue`) also exists:
+  a link writing to a device controller. Not tried yet.
 
 ## A setting exposed as a percentage, animated by a cue (R15, 24/11/2026)
 
