@@ -1737,6 +1737,11 @@ still (`ready`) and whatever reads it stutters until it is restarted by hand. Se
   (`masterScene.tools`, reached from a Script by walking up to the highest `Scene`), found again by its label by each
   Script, its `positionInMeasure` linked to the shader of every effect: a `tap`, a `tempo` or a `resync` from any of them
   moves them all, in phase. Rebuild an effect's `Link` when it switches to another `TempoTool`.
+- `TempoTool.tempo.get()` is the BPM as a float, `tempo.set(128.0)` sets it, `resync.trig()` puts the first beat now
+  (verified R15, 28/11/2026: a Script writes the BPM measured outside SMODE every 10 frames, other Scripts read it).
+- From a Script in the **Project's** tools (not inside a Scene): walking `parentElement` up reaches `Project`, and
+  `project.masterScene` is the Show (`Scene`); its `.tools` are the Show's tools (verified R15, 28/11/2026). A walk looking
+  for the highest `Scene` finds nothing from there.
 - `AudioSpectrumLinkSource`: `extractor.audioChannel`, `extractor.frequencyInterval`, `extractor.amplitudeInterval`, `method`, to send a band (kick) to a parameter. Wiring verified, not the result on real sound.
 - `engine.status.gpuConsumption`, `.cpuConsumption`, `.frame.rate.toString()` (`16.67 ms / 60`) read the load by script. The GPU reading is noisy, with isolated spikes.
 - `engine.status.frame` (`FrameInformation`, no `get()` on it: read its fields): `rate.get()` = images per second, `rate.toString()` = `"28.95 ms / 34.55"`

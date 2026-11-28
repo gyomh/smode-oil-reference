@@ -1512,6 +1512,11 @@ rester immobile (`ready`) et ce qui la lit saccade jusqu'à une relance à la ma
   (`masterScene.tools`, atteinte depuis un Script en remontant jusqu'à la `Scene` la plus haute), retrouvé par son label par
   chaque Script, son `positionInMeasure` lié au shader de chaque effet : un `tap`, un `tempo` ou un `resync` venu de n'importe
   lequel les fait tous bouger, en phase. Refaire le `Link` d'un effet quand il passe sur un autre `TempoTool`.
+- `TempoTool.tempo.get()` donne le BPM (float), `tempo.set(128.0)` le règle, `resync.trig()` pose le premier temps maintenant
+  (vérifié R15, 28/11/2026 : un Script y écrit toutes les 10 images un BPM mesuré hors de SMODE, d'autres Scripts le lisent).
+- Depuis un Script dans les outils du **Project** (pas dans une Scene) : remonter par `parentElement` arrive à `Project`, et
+  `project.masterScene` est le Show (`Scene`) ; ses `.tools` sont les outils du Show (vérifié R15, 28/11/2026). Une remontée
+  qui cherche la plus haute `Scene` ne trouve rien de là.
 - `AudioSpectrumLinkSource` : `extractor.audioChannel`, `extractor.frequencyInterval`, `extractor.amplitudeInterval`, `method`, pour envoyer une bande (kick) vers un paramètre. Câblage vérifié, pas le résultat sur du vrai son.
 - `engine.status.gpuConsumption`, `.cpuConsumption`, `.frame.rate.toString()` (`16.67 ms / 60`) lisent la charge par script. La mesure GPU est bruitée, avec des pics isolés.
 - `engine.status.frame` (`FrameInformation`, pas de `get()` dessus : lire ses champs) : `rate.get()` = images par seconde, `rate.toString()` =
